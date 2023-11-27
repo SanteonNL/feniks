@@ -1,2 +1,2 @@
-# feniks
-A web-app that converts data to FHIR datasets
+# Fenix
+FHIR Enable Node for Information eXchange. A web-app that converts data to FHIR datasets
