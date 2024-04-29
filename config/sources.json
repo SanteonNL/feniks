@@ -1,0 +1,21 @@
+{
+    "services": [
+        {
+            "type": "ndjson",
+            "format": "fhir",
+            "sourcePath": "data/fhir/patient.ndjson"
+        },
+        {
+            "type": "csv",
+            "format": "sim",
+            "sourcePath": "data/sim/patient.csv"
+        },
+        {
+            "type": "sql",
+            "databaseType": "sql_server",
+            "sourcePath": "data/sql/patient.sql",
+            "connectionString": "postgres://user:pass@localhost:1433/dbname?sslmode=disable"
+        }
+
+    ]
+}

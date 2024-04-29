@@ -1,6 +1,8 @@
 package sim
 
-import "time"
+import (
+	"time"
+)
 
 type Patient struct {
 	Identificatienummer        *string    `csv:"Identificatienummer,omitempty" json:"identificatienummer,omitempty" parquet:"Identificatienummer"`
