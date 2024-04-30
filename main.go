@@ -87,10 +87,10 @@ type Service interface {
 	GetAllPatients() ([]*fhir.Patient, error)
 }
 
-type PatientService interface {
-	GetPatient(id string) (*fhir.Patient, error)
-	GetAllPatients() ([]*fhir.Patient, error)
-}
+// type PatientService interface {
+// 	GetPatient(id string) (*fhir.Patient, error)
+// 	GetAllPatients() ([]*fhir.Patient, error)
+// }
 
 type Application struct {
 	Services []Service

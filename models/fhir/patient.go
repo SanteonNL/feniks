@@ -21,32 +21,33 @@ import "encoding/json"
 
 // Patient is documented here http://hl7.org/fhir/StructureDefinition/Patient
 type Patient struct {
-	Id                   *string                `bson:"id,omitempty" json:"id,omitempty"`
-	Meta                 *Meta                  `bson:"meta,omitempty" json:"meta,omitempty"`
-	ImplicitRules        *string                `bson:"implicitRules,omitempty" json:"implicitRules,omitempty"`
-	Language             *string                `bson:"language,omitempty" json:"language,omitempty"`
-	Text                 *Narrative             `bson:"text,omitempty" json:"text,omitempty"`
-	Extension            []Extension            `bson:"extension,omitempty" json:"extension,omitempty"`
-	ModifierExtension    []Extension            `bson:"modifierExtension,omitempty" json:"modifierExtension,omitempty"`
-	Identifier           []Identifier           `bson:"identifier,omitempty" json:"identifier,omitempty"`
-	Active               *bool                  `bson:"active,omitempty" json:"active,omitempty"`
-	Name                 []HumanName            `bson:"name,omitempty" json:"name,omitempty"`
-	Telecom              []ContactPoint         `bson:"telecom,omitempty" json:"telecom,omitempty"`
-	Gender               *AdministrativeGender  `bson:"gender,omitempty" json:"gender,omitempty"`
-	BirthDate            *string                `bson:"birthDate,omitempty" json:"birthDate,omitempty"`
-	DeceasedBoolean      *bool                  `bson:"deceasedBoolean,omitempty" json:"deceasedBoolean,omitempty"`
-	DeceasedDateTime     *string                `bson:"deceasedDateTime,omitempty" json:"deceasedDateTime,omitempty"`
-	Address              []Address              `bson:"address,omitempty" json:"address,omitempty"`
-	MaritalStatus        *CodeableConcept       `bson:"maritalStatus,omitempty" json:"maritalStatus,omitempty"`
-	MultipleBirthBoolean *bool                  `bson:"multipleBirthBoolean,omitempty" json:"multipleBirthBoolean,omitempty"`
-	MultipleBirthInteger *int                   `bson:"multipleBirthInteger,omitempty" json:"multipleBirthInteger,omitempty"`
-	Photo                []Attachment           `bson:"photo,omitempty" json:"photo,omitempty"`
-	Contact              []PatientContact       `bson:"contact,omitempty" json:"contact,omitempty"`
-	Communication        []PatientCommunication `bson:"communication,omitempty" json:"communication,omitempty"`
-	GeneralPractitioner  []Reference            `bson:"generalPractitioner,omitempty" json:"generalPractitioner,omitempty"`
-	ManagingOrganization *Reference             `bson:"managingOrganization,omitempty" json:"managingOrganization,omitempty"`
-	Link                 []PatientLink          `bson:"link,omitempty" json:"link,omitempty"`
+	Id                   *string                `bson:"id,omitempty" json:"id,omitempty" db:"id"`
+	Meta                 *Meta                  `bson:"meta,omitempty" json:"meta,omitempty" db:"meta"`
+	ImplicitRules        *string                `bson:"implicitRules,omitempty" json:"implicitRules,omitempty" db:"implicit_rules"`
+	Language             *string                `bson:"language,omitempty" json:"language,omitempty" db:"language"`
+	Text                 *Narrative             `bson:"text,omitempty" json:"text,omitempty" db:"text"`
+	Extension            []Extension            `bson:"extension,omitempty" json:"extension,omitempty" db:"extension"`
+	ModifierExtension    []Extension            `bson:"modifierExtension,omitempty" json:"modifierExtension,omitempty" db:"modifier_extension"`
+	Identifier           []Identifier           `bson:"identifier,omitempty" json:"identifier,omitempty" db:"identifier"`
+	Active               *bool                  `bson:"active,omitempty" json:"active,omitempty" db:"active"`
+	Name                 []HumanName            `bson:"name,omitempty" json:"name,omitempty" db:"name"`
+	Telecom              []ContactPoint         `bson:"telecom,omitempty" json:"telecom,omitempty" db:"telecom"`
+	Gender               *AdministrativeGender  `bson:"gender,omitempty" json:"gender,omitempty" db:"gender"`
+	BirthDate            *string                `bson:"birthDate,omitempty" json:"birthDate,omitempty" db:"birth_date"`
+	DeceasedBoolean      *bool                  `bson:"deceasedBoolean,omitempty" json:"deceasedBoolean,omitempty" db:"deceased_boolean"`
+	DeceasedDateTime     *string                `bson:"deceasedDateTime,omitempty" json:"deceasedDateTime,omitempty" db:"deceased_date_time"`
+	Address              []Address              `bson:"address,omitempty" json:"address,omitempty" db:"address"`
+	MaritalStatus        *CodeableConcept       `bson:"maritalStatus,omitempty" json:"maritalStatus,omitempty" db:"marital_status"`
+	MultipleBirthBoolean *bool                  `bson:"multipleBirthBoolean,omitempty" json:"multipleBirthBoolean,omitempty" db:"multiple_birth_boolean"`
+	MultipleBirthInteger *int                   `bson:"multipleBirthInteger,omitempty" json:"multipleBirthInteger,omitempty" db:"multiple_birth_integer"`
+	Photo                []Attachment           `bson:"photo,omitempty" json:"photo,omitempty" db:"photo"`
+	Contact              []PatientContact       `bson:"contact,omitempty" json:"contact,omitempty" db:"contact"`
+	Communication        []PatientCommunication `bson:"communication,omitempty" json:"communication,omitempty" db:"communication"`
+	GeneralPractitioner  []Reference            `bson:"generalPractitioner,omitempty" json:"generalPractitioner,omitempty" db:"general_practitioner"`
+	ManagingOrganization *Reference             `bson:"managingOrganization,omitempty" json:"managingOrganization,omitempty" db:"managing_organization"`
+	Link                 []PatientLink          `bson:"link,omitempty" json:"link,omitempty" db:"link"`
 }
+
 type PatientContact struct {
 	Id                *string               `bson:"id,omitempty" json:"id,omitempty"`
 	Extension         []Extension           `bson:"extension,omitempty" json:"extension,omitempty"`
