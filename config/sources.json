@@ -12,9 +12,9 @@
         },
         {
             "type": "sql",
-            "databaseType": "sql_server",
+            "databaseType": "postgres",
             "sourcePath": "data/sql/patient.sql",
-            "connectionString": "postgres://user:pass@localhost:1433/dbname?sslmode=disable"
+            "connStr": "postgres://postgres:mysecretpassword@localhost:5432/tsl_employee?sslmode=disable"
         }
 
     ]

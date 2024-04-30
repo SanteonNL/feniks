@@ -1,0 +1,74 @@
+        CREATE TABLE patient_hix_patient (
+            identificatienummer VARCHAR(13),
+            geslachtcode VARCHAR(255),
+            geslachtomschrijving VARCHAR(255),
+            gerelateerdpersoonid VARCHAR(20),
+            gerelateerderelatie VARCHAR(255),
+            land VARCHAR(4),
+            geboortedatum TIMESTAMP,
+            datumoverlijden DATE,
+            datumcheckstatusoverlijden VARCHAR(255)
+        );
+
+
+        INSERT INTO patient_hix_patient (
+    identificatienummer,
+    geslachtcode,
+    geslachtomschrijving,
+    gerelateerdpersoonid,
+    gerelateerderelatie,
+    land,
+    geboortedatum,
+    datumoverlijden,
+    datumcheckstatusoverlijden
+) VALUES (
+    '456',  -- identificatienummer
+    'M',  -- geslachtcode
+    'Male',  -- geslachtomschrijving
+    '789',  -- gerelateerdpersoonid
+    'FTH',  -- gerelateerderelatie
+    'NL',  -- land
+    '2022-01-01 00:00:00',  -- geboortedatum
+    NULL,  -- datumoverlijden
+    NULL  -- datumcheckstatusoverlijden
+), (
+    '457',  -- identificatienummer
+    'F',  -- geslachtcode
+    'Female',  -- geslachtomschrijving
+    '790',  -- gerelateerdpersoonid
+    'MTH',  -- gerelateerderelatie
+    'NL',  -- land
+    '2022-02-01 00:00:00',  -- geboortedatum
+    NULL,  -- datumoverlijden
+    NULL  -- datumcheckstatusoverlijden
+), (
+    '458',  -- identificatienummer
+    'M',  -- geslachtcode
+    'Male',  -- geslachtomschrijving
+    '791',  -- gerelateerdpersoonid
+    'FTH',  -- gerelateerderelatie
+    'NL',  -- land
+    '2022-03-01 00:00:00',  -- geboortedatum
+    NULL,  -- datumoverlijden
+    NULL  -- datumcheckstatusoverlijden
+), (
+    '459',  -- identificatienummer
+    'F',  -- geslachtcode
+    'Female',  -- geslachtomschrijving
+    '792',  -- gerelateerdpersoonid
+    'MTH',  -- gerelateerderelatie
+    'NL',  -- land
+    '2022-04-01 00:00:00',  -- geboortedatum
+    NULL,  -- datumoverlijden
+    NULL  -- datumcheckstatusoverlijden
+), (
+    '460',  -- identificatienummer
+    'M',  -- geslachtcode
+    'Male',  -- geslachtomschrijving
+    '793',  -- gerelateerdpersoonid
+    'FTH',  -- gerelateerderelatie
+    'NL',  -- land
+    '2022-05-01 00:00:00',  -- geboortedatum
+    NULL,  -- datumoverlijden
+    NULL  -- datumcheckstatusoverlijden
+);

@@ -2,17 +2,21 @@ package main
 
 import (
 	"bufio"
-	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/SanteonNL/fenix/models/sim"
+	"github.com/gorilla/mux"
+
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/postgres"
 )
 
 type Config struct {
@@ -20,10 +24,11 @@ type Config struct {
 }
 
 type ServiceConfig struct {
-	Type       string `json:"type"`
-	Format     string `json:"format"`
-	ConnStr    string `json:"connStr"`
-	SourcePath string `json:"sourcePath"`
+	Type         string `json:"type"`
+	Format       string `json:"format"`
+	DatabaseType string `json:"databaseType"`
+	ConnStr      string `json:"connStr"`
+	SourcePath   string `json:"sourcePath"`
 }
 
 func NewService(config ServiceConfig) (Service, error) {
@@ -52,10 +57,18 @@ func NewService(config ServiceConfig) (Service, error) {
 		default:
 			return nil, fmt.Errorf("unsupported NDJSON format: %s", config.Format)
 		}
+	case "sql":
+		switch config.DatabaseType {
+		case "postgres":
+			return NewSQLService(config.ConnStr, config.DatabaseType)
+		// case "sqlserver":
+		// 	//return NewSQLServerService(config.ConnStr)
+		default:
+			return nil, fmt.Errorf("unsupported database type: %s", config.DatabaseType)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported service type: %s", config.Type)
 	}
-
 }
 
 // CSVService is a FHIRService implementation for translating CSV data to FHIR format
@@ -73,6 +86,10 @@ type Service interface {
 	GetResource(resourceType string, id string) (fhirResource, error)
 }
 
+type Application struct {
+	Services []Service
+}
+
 func main() {
 
 	file, err := os.Open("config/sources.json")
@@ -86,28 +103,47 @@ func main() {
 		log.Fatal(err)
 	}
 
+	app := &Application{
+		Services: []Service{},
+	}
+
 	for _, serviceConfig := range config.Services {
 		service, err := NewService(serviceConfig)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		patientID := "456" // Replace with the actual patient ID
-
-		// If the service format is not FHIR, get the patient and translate it to FHIR
-		fhirResource, err := service.GetResource("patient", patientID)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		jsonBytes, err := fhirResource.MarshalJSON()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fmt.Println(string(jsonBytes))
+		app.Services = append(app.Services, service)
 	}
 
+	r := mux.NewRouter()
+	r.HandleFunc("/patient/{id}", app.GetPatient).Methods("GET")
+	//r.HandleFunc("/patients", app.GetAllPatients).Methods("GET")
+	log.Fatal(http.ListenAndServe(":8080", r))
+
+}
+
+func (app *Application) GetPatient(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	for _, service := range app.Services {
+		patient, err := service.GetResource("patient", id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		jsonBytes, err := json.Marshal(patient)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Write(jsonBytes)
+		return
+	}
+
+	http.Error(w, "Patient not found", http.StatusNotFound)
 }
 
 type fhirResource interface {
@@ -252,11 +288,11 @@ func parseTime(s *string) *time.Time {
 }
 
 type SQLService struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
-func NewSQLService(connStr string) (*SQLService, error) {
-	db, err := sql.Open("postgres", connStr)
+func NewSQLService(connStr string, databaseType string) (*SQLService, error) {
+	db, err := gorm.Open("postgres", connStr)
 	if err != nil {
 		return nil, err
 	}
@@ -264,14 +300,29 @@ func NewSQLService(connStr string) (*SQLService, error) {
 	return &SQLService{db: db}, nil
 }
 
-func (s *SQLService) GetPatientByID(id string) (*fhir.Patient, error) {
-	row := s.db.QueryRow("SELECT * FROM patients WHERE id = $1", id)
-
-	var patient fhir.Patient
-	err := row.Scan(&patient.Id, &patient.Name, &patient.BirthDate)
+func (s *SQLService) GetPatientByID(id string) (*sim.Patient, error) {
+	var patient sim.Patient
+	err := s.db.Raw("SELECT * FROM patient_hix_patient WHERE identificatienummer = ?", id).Scan(&patient).Error
 	if err != nil {
 		return nil, err
 	}
 
 	return &patient, nil
+}
+
+func (s *SQLService) GetResource(resourceType string, id string) (fhirResource, error) {
+	switch resourceType {
+	case "patient":
+		SIMPatient, err := s.GetPatientByID(id)
+		if err != nil {
+			return nil, err
+		}
+		fhirPatient, err := TranslateSIMPatientToFHIR(SIMPatient)
+		if err != nil {
+			return nil, err
+		}
+		return fhirPatient, nil
+	default:
+		return nil, fmt.Errorf("resource type %s is not supported", resourceType)
+	}
 }
