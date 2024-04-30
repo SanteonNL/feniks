@@ -51,7 +51,7 @@ func NewService(config ServiceConfig) (Service, error) {
 	case "ndjson":
 		switch config.Format {
 		case "fhir":
-			return NewNDJSONService(config.SourcePath), nil
+			return NewFHIRNDJSONService(config.SourcePath), nil
 		// case "castor":
 		// 	// Create a Castor NDJSON service...
 		default:
@@ -117,7 +117,7 @@ func main() {
 
 	r := mux.NewRouter()
 	r.HandleFunc("/patient/{id}", app.GetPatient).Methods("GET")
-	//r.HandleFunc("/patients", app.GetAllPatients).Methods("GET")
+	r.HandleFunc("/patients/{id}", app.GetAllPatients).Methods("GET")
 	log.Fatal(http.ListenAndServe(":8080", r))
 
 }
@@ -145,6 +145,31 @@ func (app *Application) GetPatient(w http.ResponseWriter, r *http.Request) {
 
 	http.Error(w, "Patient not found", http.StatusNotFound)
 }
+func (app *Application) GetAllPatients(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/fhir+ndjson")
+
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	allPatients := []fhirResource{}
+
+	for _, service := range app.Services {
+		patient, err := service.GetResource("patient", id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		allPatients = append(allPatients, patient)
+	}
+
+	jsonBytes, err := json.Marshal(allPatients)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(jsonBytes)
+}
 
 type fhirResource interface {
 	MarshalJSON() ([]byte, error)
@@ -153,7 +178,7 @@ type fhirResource interface {
 func (s *SIMCSVService) GetResource(resourceType string, id string) (fhirResource, error) {
 	switch resourceType {
 	case "patient":
-		SIMPatient, err := s.GetPatientByID(id)
+		SIMPatient, err := s.GetPatient(id)
 		if err != nil {
 			return nil, err
 		}
@@ -168,7 +193,7 @@ func (s *SIMCSVService) GetResource(resourceType string, id string) (fhirResourc
 	}
 }
 
-func (s *SIMCSVService) GetPatientByID(id string) (*sim.Patient, error) {
+func (s *SIMCSVService) GetPatient(id string) (*sim.Patient, error) {
 	file, err := os.Open(s.FilePath)
 	if err != nil {
 		return nil, err
@@ -225,7 +250,7 @@ type FHIRNDJSONService struct {
 	FilePath string // Path to the NDJSON file
 }
 
-func NewNDJSONService(filePath string) *FHIRNDJSONService {
+func NewFHIRNDJSONService(filePath string) *FHIRNDJSONService {
 	return &FHIRNDJSONService{
 		FilePath: filePath,
 	}
@@ -234,14 +259,14 @@ func NewNDJSONService(filePath string) *FHIRNDJSONService {
 func (s *FHIRNDJSONService) GetResource(resourceType string, id string) (fhirResource, error) {
 	switch resourceType {
 	case "patient":
-		return s.GetPatientByID(id)
+		return s.GetPatient(id)
 	// Add other cases for other resource types...
 	default:
 		return nil, fmt.Errorf("resource type %s is not supported", resourceType)
 	}
 }
 
-func (s *FHIRNDJSONService) GetPatientByID(id string) (*fhir.Patient, error) {
+func (s *FHIRNDJSONService) GetPatient(id string) (*fhir.Patient, error) {
 	file, err := os.Open(s.FilePath)
 	if err != nil {
 		return nil, err
@@ -300,7 +325,7 @@ func NewSQLService(connStr string, databaseType string) (*SQLService, error) {
 	return &SQLService{db: db}, nil
 }
 
-func (s *SQLService) GetPatientByID(id string) (*sim.Patient, error) {
+func (s *SQLService) GetPatient(id string) (*sim.Patient, error) {
 	var patient sim.Patient
 	err := s.db.Raw("SELECT * FROM patient_hix_patient WHERE identificatienummer = ?", id).Scan(&patient).Error
 	if err != nil {
@@ -313,7 +338,7 @@ func (s *SQLService) GetPatientByID(id string) (*sim.Patient, error) {
 func (s *SQLService) GetResource(resourceType string, id string) (fhirResource, error) {
 	switch resourceType {
 	case "patient":
-		SIMPatient, err := s.GetPatientByID(id)
+		SIMPatient, err := s.GetPatient(id)
 		if err != nil {
 			return nil, err
 		}
