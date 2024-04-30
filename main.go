@@ -83,7 +83,13 @@ func NewSIMCSVService(filePath string) *SIMCSVService {
 }
 
 type Service interface {
-	GetResource(resourceType string, id string) (fhirResource, error)
+	GetPatient(id string) (*fhir.Patient, error)
+	GetAllPatients() ([]*fhir.Patient, error)
+}
+
+type PatientService interface {
+	GetPatient(id string) (*fhir.Patient, error)
+	GetAllPatients() ([]*fhir.Patient, error)
 }
 
 type Application struct {
@@ -125,9 +131,8 @@ func main() {
 func (app *Application) GetPatient(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
-
 	for _, service := range app.Services {
-		patient, err := service.GetResource("patient", id)
+		patient, err := service.GetPatient(id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -145,21 +150,19 @@ func (app *Application) GetPatient(w http.ResponseWriter, r *http.Request) {
 
 	http.Error(w, "Patient not found", http.StatusNotFound)
 }
+
 func (app *Application) GetAllPatients(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/fhir+ndjson")
+	//w.Header().Set("Content-Type", "application/fhir+ndjson")
 
-	vars := mux.Vars(r)
-	id := vars["id"]
-
-	allPatients := []fhirResource{}
-
+	var allPatients []*fhir.Patient
 	for _, service := range app.Services {
-		patient, err := service.GetResource("patient", id)
+		patients, err := service.GetAllPatients()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		allPatients = append(allPatients, patient)
+
+		allPatients = append(allPatients, patients...)
 	}
 
 	jsonBytes, err := json.Marshal(allPatients)
@@ -168,45 +171,69 @@ func (app *Application) GetAllPatients(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonBytes)
 }
 
-type fhirResource interface {
-	MarshalJSON() ([]byte, error)
-}
+// type fhirResource interface {
+// 	MarshalJSON() ([]byte, error)
+// }
 
-func (s *SIMCSVService) GetResource(resourceType string, id string) (fhirResource, error) {
-	switch resourceType {
-	case "patient":
-		SIMPatient, err := s.GetPatient(id)
-		if err != nil {
-			return nil, err
-		}
-		fhirPatient, err := TranslateSIMPatientToFHIR(SIMPatient)
-		if err != nil {
-			return nil, err
-		}
-		return fhirPatient, nil
-	// Add other cases for other resource types...
-	default:
-		return nil, fmt.Errorf("resource type %s is not supported", resourceType)
-	}
-}
+//	func (s *SIMCSVService) GetResource(resourceType string, id string) ([]fhirResource, error) {
+//		switch resourceType {
+//		case "patient":
+//			SIMPatient, err := s.GetPatient(id)
+//			if err != nil {
+//				return nil, err
+//			}
+//			fhirPatient, err := TranslateSIMPatientToFHIR(SIMPatient)
+//			if err != nil {
+//				return nil, err
+//			}
+//			return []fhirResource{fhirPatient}, nil
+//		// Add other cases for other resource types...
+//		case "patient/$export":
+//			patients, err := s.GetAllPatients()
+//			if err != nil {
+//				return nil, err
+//			}
+//			var fhirPatients []fhirResource
+//			for _, patient := range patients {
+//				fhirPatient, err := TranslateSIMPatientToFHIR(patient)
+//				if err != nil {
+//					return nil, err
+//				}
+//				fhirPatients = append(fhirPatients, fhirPatient)
+//			}
+//			return fhirPatients, nil
+//		default:
+//			return nil, fmt.Errorf("resource type %s is not supported", resourceType)
+//		}
+//	}
 
-func (s *SIMCSVService) GetPatient(id string) (*sim.Patient, error) {
+func (s *SIMCSVService) readCSVFile() (*os.File, *csv.Reader, error) {
 	file, err := os.Open(s.FilePath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	defer file.Close()
 
 	reader := csv.NewReader(file)
 	reader.Comma = ';'
 
 	// Read and discard the header row
 	if _, err := reader.Read(); err != nil {
+		return nil, nil, err
+	}
+
+	return file, reader, nil
+}
+
+func (s *SIMCSVService) GetPatient(id string) (*fhir.Patient, error) {
+	file, reader, err := s.readCSVFile()
+	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
 	for {
 		record, err := reader.Read()
@@ -217,19 +244,73 @@ func (s *SIMCSVService) GetPatient(id string) (*sim.Patient, error) {
 			return nil, err
 		}
 
-		geboortedatum, _ := time.Parse("2006-01-02", record[6])
-		patient := &sim.Patient{
-			Identificatienummer: &record[0],
-			Geboortedatum:       &geboortedatum, // Parse the BirthDate field as a time.Time,
-			// Continue for the rest of the fields...
+		simPatient, err := mapRecordToSIMPatient(record)
+		if err != nil {
+			return nil, err
 		}
 
-		if *patient.Identificatienummer == id {
-			return patient, nil
+		fhirPatient, err := TranslateSIMPatientToFHIR(simPatient)
+		if err != nil {
+			return nil, err
+		}
+
+		if *fhirPatient.Id == id {
+			return fhirPatient, nil
 		}
 	}
 
-	return nil, fmt.Errorf("no patient found with ID %s", id)
+	return nil, nil
+}
+
+func (s *SIMCSVService) GetAllPatients() ([]*fhir.Patient, error) {
+	file, reader, err := s.readCSVFile()
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var patients []*fhir.Patient
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		simPatient, err := mapRecordToSIMPatient(record)
+		if err != nil {
+			return nil, err
+		}
+
+		fhirPatient, err := TranslateSIMPatientToFHIR(simPatient)
+		if err != nil {
+			return nil, err
+		}
+
+		patients = append(patients, fhirPatient)
+	}
+
+	if len(patients) == 0 {
+		return nil, fmt.Errorf("no patients found")
+	}
+
+	return patients, nil
+}
+
+func mapRecordToSIMPatient(record []string) (*sim.Patient, error) {
+	if len(record) < 2 {
+		return nil, fmt.Errorf("invalid record format")
+	}
+
+	patient := &sim.Patient{
+		Identificatienummer: &record[0],
+		Geboortedatum:       parseTime(&record[1]),
+		// Continue mapping the rest of the fields...
+	}
+
+	return patient, nil
 }
 
 func TranslateSIMPatientToFHIR(patient *sim.Patient) (*fhir.Patient, error) {
@@ -256,15 +337,18 @@ func NewFHIRNDJSONService(filePath string) *FHIRNDJSONService {
 	}
 }
 
-func (s *FHIRNDJSONService) GetResource(resourceType string, id string) (fhirResource, error) {
-	switch resourceType {
-	case "patient":
-		return s.GetPatient(id)
-	// Add other cases for other resource types...
-	default:
-		return nil, fmt.Errorf("resource type %s is not supported", resourceType)
-	}
-}
+// func (s *FHIRNDJSONService) GetResource(resourceType string, id string) ([]fhirResource, error) {
+// 	switch resourceType {
+// 	case "patient":
+// 		return s.GetPatient(id)
+// 		// Add other cases for other resource types...
+// 	case "patient/$export":
+// 		return s.GetAllPatients(id)
+// 		// Add other cases for other resource types...
+// 	default:
+// 		return nil, fmt.Errorf("resource type %s is not supported", resourceType)
+// 	}
+// }
 
 func (s *FHIRNDJSONService) GetPatient(id string) (*fhir.Patient, error) {
 	file, err := os.Open(s.FilePath)
@@ -291,7 +375,35 @@ func (s *FHIRNDJSONService) GetPatient(id string) (*fhir.Patient, error) {
 		return nil, err
 	}
 
-	return nil, fmt.Errorf("no patient found with ID %s", id)
+	return nil, nil
+}
+
+func (s *FHIRNDJSONService) GetAllPatients() ([]*fhir.Patient, error) {
+	file, err := os.Open(s.FilePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	var patients []*fhir.Patient
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		var patient fhir.Patient
+		if err := json.Unmarshal([]byte(line), &patient); err != nil {
+			return nil, err
+		}
+
+		patients = append(patients, &patient)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return patients, nil
 }
 
 func TranslateFHIRPatientToSIM(patient *fhir.Patient) (*sim.Patient, error) {
@@ -325,29 +437,53 @@ func NewSQLService(connStr string, databaseType string) (*SQLService, error) {
 	return &SQLService{db: db}, nil
 }
 
-func (s *SQLService) GetPatient(id string) (*sim.Patient, error) {
+func (s *SQLService) GetPatient(id string) (*fhir.Patient, error) {
 	var patient sim.Patient
 	err := s.db.Raw("SELECT * FROM patient_hix_patient WHERE identificatienummer = ?", id).Scan(&patient).Error
 	if err != nil {
 		return nil, err
 	}
 
-	return &patient, nil
+	fhirPatient, err := TranslateSIMPatientToFHIR(&patient)
+	if err != nil {
+		return nil, err
+	}
+
+	return fhirPatient, nil
 }
 
-func (s *SQLService) GetResource(resourceType string, id string) (fhirResource, error) {
-	switch resourceType {
-	case "patient":
-		SIMPatient, err := s.GetPatient(id)
-		if err != nil {
-			return nil, err
-		}
-		fhirPatient, err := TranslateSIMPatientToFHIR(SIMPatient)
-		if err != nil {
-			return nil, err
-		}
-		return fhirPatient, nil
-	default:
-		return nil, fmt.Errorf("resource type %s is not supported", resourceType)
+func (s *SQLService) GetAllPatients() ([]*fhir.Patient, error) {
+	var patients []*sim.Patient
+	err := s.db.Table("patient_hix_patient").Find(&patients).Error
+	if err != nil {
+		return nil, err
 	}
+
+	var fhirPatients []*fhir.Patient
+	for _, patient := range patients {
+		fhirPatient, err := TranslateSIMPatientToFHIR(patient)
+		if err != nil {
+			return nil, err
+		}
+		fhirPatients = append(fhirPatients, fhirPatient)
+	}
+
+	return fhirPatients, nil
 }
+
+// func (s *SQLService) GetResource(resourceType string, id string) (fhirResource, error) {
+// 	switch resourceType {
+// 	case "patient":
+// 		SIMPatient, err := s.GetPatient(id)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		fhirPatient, err := TranslateSIMPatientToFHIR(SIMPatient)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		return fhirPatient, nil
+// 	default:
+// 		return nil, fmt.Errorf("resource type %s is not supported", resourceType)
+// 	}
+// }
