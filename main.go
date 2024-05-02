@@ -454,7 +454,7 @@ func (s *SQLService) GetPatient(id string) (*fhir.Patient, error) {
 }
 func (s *SQLService) GetAllPatients() ([]*fhir.Patient, error) {
 
-	query, err := os.ReadFile("queries/patient.sql")
+	query, err := os.ReadFile("queries/hix/patient.sql")
 	if err != nil {
 		return nil, err
 	}
