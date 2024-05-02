@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -451,21 +452,39 @@ func (s *SQLService) GetPatient(id string) (*fhir.Patient, error) {
 
 	return fhirPatient, nil
 }
-
 func (s *SQLService) GetAllPatients() ([]*fhir.Patient, error) {
-	var patients []*sim.Patient
-	err := s.db.Table("patient_hix_patient").Find(&patients).Error
+
+	query, err := os.ReadFile("queries/patient.sql")
 	if err != nil {
 		return nil, err
 	}
 
+	rows, err := s.db.Raw(string(query)).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	var fhirPatients []*fhir.Patient
-	for _, patient := range patients {
-		fhirPatient, err := TranslateSIMPatientToFHIR(patient)
+
+	for rows.Next() {
+		var patientJSON sql.NullString
+		err := rows.Scan(&patientJSON)
 		if err != nil {
 			return nil, err
 		}
-		fhirPatients = append(fhirPatients, fhirPatient)
+
+		var patient fhir.Patient
+		err = json.Unmarshal([]byte(patientJSON.String), &patient)
+		if err != nil {
+			return nil, err
+		}
+
+		fhirPatients = append(fhirPatients, &patient)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return fhirPatients, nil
@@ -473,6 +492,21 @@ func (s *SQLService) GetAllPatients() ([]*fhir.Patient, error) {
 
 // func (s *SQLService) GetResource(resourceType string, id string) (fhirResource, error) {
 // 	switch resourceType {
+// 	case "patient":
+// 		SIMPatient, err := s.GetPatient(id)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		fhirPatient, err := TranslateSIMPatientToFHIR(SIMPatient)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		return fhirPatient, nil
+// 	default:
+// 		return nil, fmt.Errorf("resource type %s is not supported", resourceType)
+// 	}
+// }
+
 // 	case "patient":
 // 		SIMPatient, err := s.GetPatient(id)
 // 		if err != nil {
