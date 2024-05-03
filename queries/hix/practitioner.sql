@@ -4,7 +4,7 @@ SELECT
         practitioner.practitioner_id,
         'name',
         (
-            -- humanName.sql
+            -- humanName_.sql
             WHERE
                 humanName.identificatienummer = practitioner.practitioner_id
         )

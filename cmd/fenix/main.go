@@ -10,11 +10,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/SanteonNL/fenix/models/sim"
+	"github.com/SanteonNL/fenix/util"
 	"github.com/gorilla/mux"
 
 	"github.com/jinzhu/gorm"
@@ -100,7 +100,7 @@ type Application struct {
 
 func main() {
 
-	configPath := getAbsolutePath("config/sources.json")
+	configPath := util.GetAbsolutePath("config/sources.json")
 
 	file, err := os.Open(configPath)
 	if err != nil {
@@ -457,7 +457,7 @@ func (s *SQLService) GetPatient(id string) (*fhir.Patient, error) {
 }
 func (s *SQLService) GetAllPatients() ([]*fhir.Patient, error) {
 
-	queryPath := getAbsolutePath("queries/hix/patient.sql")
+	queryPath := util.GetAbsolutePath("queries/hix/patient.sql")
 
 	query, err := os.ReadFile(queryPath)
 	if err != nil {
@@ -526,16 +526,3 @@ func (s *SQLService) GetAllPatients() ([]*fhir.Patient, error) {
 // 		return nil, fmt.Errorf("resource type %s is not supported", resourceType)
 // 	}
 // }
-
-func getAbsolutePath(relativePath string) string {
-	// Get the current working directory
-	root, err := os.Getwd()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Join the current working directory with the relative path
-	absolutePath := filepath.Join(root, relativePath)
-
-	return absolutePath
-}

@@ -5,7 +5,6 @@ SELECT
         'id',
         p.identificatienummer,
         'gender',
-        -- targetsystem: https://www.hl7.org/fhir/valueset/gender
         CASE
             WHEN p.geslachtcode = 'M' THEN 'male'
             WHEN p.geslachtcode = 'F' THEN 'female'
@@ -14,33 +13,18 @@ SELECT
         'name',
         (
             SELECT
-                json_agg(
-                    json_build_object(
-                        'use',
-                        'official',
-                        'given',
-                        json_build_array(humanName.firstname, 'fixed secondName'),
-                        'family',
-                        humanName.lastname,
-                        'period',
-                        (
-                            SELECT
-                                json_build_object(
-                                    'start',
-                                    'beginjanuari',
-                                    'end',
-                                    'jaar binnen 10 jaar'
-                                )
-                            FROM
-                                (
-                                    SELECT
-                                        1
-                                ) AS dummy_table
-                        )
-                    )
-                )
-            FROM
-                names humanName
+    json_agg(
+        json_build_object(
+            'use',
+            humanName.name_use,
+            'given',
+            json_build_array(humanName.firstname, 'fixed secondName'),
+            'family',
+            humanName.lastname
+        )
+    )
+FROM
+    names humanName
             WHERE
                 humanName.identificatienummer = p.identificatienummer
         ),
