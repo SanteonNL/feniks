@@ -1,11 +1,13 @@
-SELECT json_agg(
+SELECT
+    json_agg(
         json_build_object(
             'use',
-            'official',
+            humanName.name_use,
             'given',
-            json_build_array(n.firstname),
+            json_build_array(humanName.firstname, 'fixed secondName'),
             'family',
-            n.lastname
+            humanName.lastname
         )
     )
-FROM patient_names n
+FROM
+    names humanName

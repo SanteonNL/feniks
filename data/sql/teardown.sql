@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS names;
+DROP TABLE IF EXISTS patient;
+DROP TABLE IF EXISTS practitioner;
+DROP TABLE IF EXISTS patient_practitioner;
