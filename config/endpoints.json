@@ -1,0 +1,24 @@
+[
+    {
+        "endpoint": "/Patient/{id}",
+        "source": "patient.sql"
+    },
+    {
+        "endpoint": "/Patient/?family=*",
+        "source": "patient.sql",
+        "replace": "whereclause1",
+        "with": "family=*"
+    },
+    {
+        "endpoint": "/Patient/?family=SMITH",
+        "source": "patient_filtername.sql",
+        "replace": "whereclause1",
+        "with": "family2=SMITH"
+    },
+    {
+        "endpoint": "/Patient/?family=Smith&name=John",
+        "source": "patient.sql",
+        "replace": "lkjadlkajds",
+        "with": "adsflkjasf"
+    }
+]

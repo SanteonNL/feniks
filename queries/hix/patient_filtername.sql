@@ -11,6 +11,8 @@ SELECT
             WHEN p.geslachtcode = 'F' THEN 'female'
             ELSE 'unknown'
         END,
+
+        -- patient_humaName.sql
         'name',
         (
             SELECT
@@ -68,6 +70,3 @@ SELECT
     ) AS json_output
 FROM
     patient p;
-WHERE 
-    p.family OR p.family = '' 
-    AND p.given OR p.given = ''
