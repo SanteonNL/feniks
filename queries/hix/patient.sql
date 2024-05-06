@@ -27,15 +27,15 @@ SELECT
                             SELECT
                                 json_build_object(
                                     'start',
-                                    'beginjanuari',
+                                    '1995-08-15',
                                     'end',
-                                    'jaar binnen 10 jaar'
+                                    '1999-08-15'
                                 )
                             FROM
                                 (
                                     SELECT
                                         1
-                                ) AS dummy_table
+                                ) AS period
                         )
                     )
                 )
@@ -54,9 +54,7 @@ SELECT
                 json_agg(
                     json_build_object(
                         'reference',
-                        CONCAT('Practitioner/', pr.practitioner_id),
-                        'type',
-                        'Practitioner'
+                        CONCAT('Practitioner/', pr.practitioner_id)
                     )
                 )
             FROM
@@ -64,10 +62,29 @@ SELECT
                 INNER JOIN patient_practitioner pp ON pr.practitioner_id = pp.practitioner_id
             WHERE
                 pp.identificatienummer = p.identificatienummer
+        ),
+        'link', 
+        (
+            SELECT
+                json_agg(
+                    json_build_object(
+                        'other',
+                        CONCAT('Patient/', cp.mother_id),
+                        'type',
+                        'seealso'
+                    )
+                )
+            FROM
+                couple cp
+            WHERE
+                cp.patient_id = p.identificatienummer
         )
+        
     ) AS json_output
 FROM
     patient p;
-WHERE 
-    p.family OR p.family = '' 
-    AND p.given OR p.given = ''
+where 
+1=1 AND p.geboortedatum --filter @patient.birthData   
+AND humanName = --filter @patient.name.given
+AND p.identificatienummer = --filter patient.identifier
+AND--  whereclause3

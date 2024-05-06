@@ -8,16 +8,7 @@ SELECT
             'family',
             humanName.lastname,
             'period',
-            (
-                SELECT
-                    json_build_object(
-                        'reference', 'http://example.com/fhir/Period/',
-                        'display', 'Period display'
-                    )
-                FROM
-                    (SELECT 1) AS dummy_table
-            )
-        )
-    )
-FROM
-    names humanName
+            (-- period.sql
+)
+            FROM
+                names humanName

@@ -93,6 +93,7 @@ VALUES (RIGHT('789', 3), 'P002');
 INSERT INTO public.patient_practitioner (identificatienummer, practitioner_id)
 VALUES (RIGHT('234', 3), 'P002');
 
+
 INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
 VALUES (RIGHT('123', 3), 'Mark', 'Johnson', 'Official');
 
@@ -122,3 +123,40 @@ VALUES (RIGHT('234', 3), 'Mia', 'Anderson', 'Official');
 
 INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
 VALUES (RIGHT('234', 3), 'Ethan', 'Taylor', 'Alternate');
+
+-- Create new mothers for existing patients
+INSERT INTO public.patient (identificatienummer, geslachtcode, geslachtomschrijving, gerelateerdpersoonid, gerelateerderelatie, land, geboortedatum, datumoverlijden, datumcheckstatusoverlijden)
+VALUES ('123M', 'F', 'Female', '123', 'Mother', 'USA', '1970-01-01', NULL, 'Unchecked');
+
+INSERT INTO public.patient (identificatienummer, geslachtcode, geslachtomschrijving, gerelateerdpersoonid, gerelateerderelatie, land, geboortedatum, datumoverlijden, datumcheckstatusoverlijden)
+VALUES ('987M', 'F', 'Female', '987', 'Mother', 'UK', '1965-05-20', NULL, 'Unchecked');
+
+INSERT INTO public.patient (identificatienummer, geslachtcode, geslachtomschrijving, gerelateerdpersoonid, gerelateerderelatie, land, geboortedatum, datumoverlijden, datumcheckstatusoverlijden)
+VALUES ('456M', 'F', 'Female', '456', 'Mother', 'Canada', '1958-12-10', NULL, 'Unchecked');
+
+INSERT INTO public.patient (identificatienummer, geslachtcode, geslachtomschrijving, gerelateerdpersoonid, gerelateerderelatie, land, geboortedatum, datumoverlijden, datumcheckstatusoverlijden)
+VALUES ('789M', 'F', 'Female', '789', 'Mother', 'Australia', '1985-08-15', NULL, 'Unchecked');
+
+INSERT INTO public.patient (identificatienummer, geslachtcode, geslachtomschrijving, gerelateerdpersoonid, gerelateerderelatie, land, geboortedatum, datumoverlijden, datumcheckstatusoverlijden)
+VALUES ('234M', 'F', 'Female', '234', 'Mother', 'Germany', '1960-03-25', NULL, 'Unchecked');
+
+-- Create a new couple table that relates a patientid to its mother
+CREATE TABLE public.couple (
+    patient_id character varying(13),
+    mother_id character varying(13)
+);
+
+INSERT INTO public.couple (patient_id, mother_id)
+VALUES ('123', '123M');
+
+INSERT INTO public.couple (patient_id, mother_id)
+VALUES ('987', '987M');
+
+INSERT INTO public.couple (patient_id, mother_id)
+VALUES ('456', '456M');
+
+INSERT INTO public.couple (patient_id, mother_id)
+VALUES ('789', '789M');
+
+INSERT INTO public.couple (patient_id, mother_id)
+VALUES ('234', '234M');

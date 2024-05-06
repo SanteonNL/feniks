@@ -4,13 +4,13 @@
         "source": "patient.sql"
     },
     {
-        "endpoint": "/Patient/?family=*",
+        "endpoint": "/Patient/?family=*&given=*",
         "source": "patient.sql",
         "replace": "whereclause1",
         "with": "family=*"
     },
     {
-        "endpoint": "/Patient/?family=SMITH",
+        "endpoint": "/Patient/?family=SMITH&given=jala",
         "source": "patient_filtername.sql",
         "replace": "whereclause1",
         "with": "family2=SMITH"
