@@ -84,7 +84,8 @@ SELECT
 FROM
     patient p;
 where 
-1=1 AND p.geboortedatum --filter @patient.birthData   
-AND humanName = --filter @patient.name.given
-AND p.identificatienummer = --filter patient.identifier
-AND--  whereclause3
+1=1 AND 
+-- whereclause1
+-- whereclause2
+AND humanName.birthDate @birthdate:comparator @birthdate:value
+AND humanName.firstname @given:comparator @given:value

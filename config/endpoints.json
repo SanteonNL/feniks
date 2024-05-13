@@ -1,24 +1,80 @@
 [
-    {
-        "endpoint": "/Patient/{id}",
-        "source": "patient.sql"
-    },
-    {
-        "endpoint": "/Patient/?family=*&given=*",
-        "source": "patient.sql",
-        "replace": "whereclause1",
-        "with": "family=*"
-    },
-    {
-        "endpoint": "/Patient/?family=SMITH&given=jala",
-        "source": "patient_filtername.sql",
-        "replace": "whereclause1",
-        "with": "family2=SMITH"
-    },
-    {
-        "endpoint": "/Patient/?family=Smith&name=John",
-        "source": "patient.sql",
-        "replace": "lkjadlkajds",
-        "with": "adsflkjasf"
+  {
+    "endpoint": "/Patient/{id}",
+    "source": "patient.sql"
+  },
+  {
+    "endpoint": "/Patient/{id}?family=*&given=*",
+    "source": "patient.sql",
+    "replace": "whereclause1",
+    "with": "family=*"
+  },
+  {
+    "endpoint": "/Patient/{id}/?family=SMITH&given=*",
+    "connection": {
+      "name": "HIX",
+      "sources": [
+        {
+          "source": "patient.sql",
+          "replace": "whereclause1",
+          "with": "family=SMITH"
+        },
+        {
+          "source": "patient.sql",
+          "replace": "whereclause2",
+          "with": "given=jala"
+        }
+      ]
     }
+  },
+  {
+    "endpoint": "/Patient/{id}/?family=SMITH&given=*&birthdate{eq,ne,gt,ge,lt,le}*",
+    "connections": [
+      {
+        "name": "HIX",
+        "sources": [
+          {
+            "file": "patient.sql",
+            "replacements": [
+              { "textToReplace": "-- whereclause1", "replaceWith": "AND 2=2" },
+              {
+                "textToReplace": "-- whereclause2",
+                "replaceWith": "AND humanName.lastname @family:comparator @family:value"
+              },
+              {
+                "textToReplace": "AND humanName.firstname @given:comparator @given:value",
+                "replaceWith": ""
+              }
+            ]
+          },
+          {
+            "file": "patient.sql",
+            "replacements": [
+              { "textToReplace": "asdf", "replaceWith": "qwer" },
+              { "textToReplace": "whereclause2", "replaceWith": "given=jala" }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "HIX2",
+        "sources": [
+          {
+            "file": "patient.sql",
+            "replacements": [
+              { "textToReplace": "asdf", "replaceWith": "qwer" },
+              { "textToReplace": "whereclause1", "replaceWith": "family=SMITH" }
+            ]
+          },
+          {
+            "file": "patient.sql",
+            "replacements": [
+              { "textToReplace": "asdf", "replaceWith": "qwer" },
+              { "textToReplace": "whereclause2", "replaceWith": "given=jala" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
 ]

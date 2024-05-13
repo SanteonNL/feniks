@@ -100,7 +100,7 @@ type Application struct {
 
 func main() {
 
-	configPath := util.GetAbsolutePath("config/sources.json")
+	configPath := util.GetAbsolutePath("config/connections.json")
 
 	file, err := os.Open(configPath)
 	if err != nil {
