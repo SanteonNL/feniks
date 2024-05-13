@@ -10,7 +10,7 @@
     "with": "family=*"
   },
   {
-    "endpoint": "/Patient/{id}/?family=SMITH&given=*",
+    "endpoint": "/Patient/{id}/?family=SMITH&family=JOHN&given=*&birthdate=ge1970-01-01&birthdate=le1980-01-01",
     "connection": {
       "name": "HIX",
       "sources": [
