@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/SanteonNL/fenix/util"
+	"github.com/jmoiron/sqlx"
 )
 
 func main() {
@@ -36,6 +37,10 @@ func main() {
 			continue
 		}
 		fileName := file.Name()
+
+		if fileName != "patient.sql" {
+			continue
+		}
 
 		fmt.Println("File name:", fileName)
 		// Read the contents of the file
@@ -69,16 +74,39 @@ func main() {
 
 			// Replace the regular expression match with the matched content
 			queryString = strings.ReplaceAll(queryString, match[0], matchedQueryString)
-
-			// Write the formatted query to a new file
-			newFilePath := filepath.Join(outputPath, fileName)
-			err = os.WriteFile(newFilePath, []byte(queryString), 0644)
-			if err != nil {
-				fmt.Println("Error writing formatted query:", err)
-				continue
-			}
-			fmt.Println("Formatted query written to:", newFilePath)
 		}
+
+		// Use sqlx to add named parameters
+		namedParams := map[string]interface{}{
+			"birthdate":          "20120101",
+			"birthdate.operator": "<=",
+			"given":              "tommy",
+		}
+
+		// Prepare the query with named parameters
+		query, args, err := sqlx.BindNamed(sqlx.DOLLAR, queryString, namedParams)
+		if err != nil {
+			fmt.Println("Error preparing query with named parameters:", err)
+			continue
+		}
+
+		// Manually replace the placeholders with the actual values
+		for i, arg := range args {
+			placeholder := fmt.Sprintf("$%d", i+1)
+			value := fmt.Sprintf("'%v'", arg)
+			query = strings.Replace(query, placeholder, value, 1)
+		}
+
+		fmt.Println(query)
+
+		// Write the formatted query to a new file
+		newFilePath := filepath.Join(outputPath, fileName)
+		err = os.WriteFile(newFilePath, []byte(query), 0644)
+		if err != nil {
+			fmt.Println("Error writing formatted query:", err)
+			continue
+		}
+		fmt.Println("Formatted query written to:", newFilePath)
 
 	}
 }

@@ -18,7 +18,7 @@ SELECT
                         'use',
                         'official' ,
                         'given',
-                        json_build_array(humanName.firstname, 'fixed secondName'),
+                        json_build_array(humanName.firstname, 'john'),
                         'family',
                         humanName.lastname,
                         'period',
@@ -86,5 +86,5 @@ where
 1=1 AND 
 -- whereclause1
 -- whereclause2
-AND humanName.birthDate '<=' '20120101'
-AND humanName.firstname = 'tommy'
+AND humanName.birthDate :birthdate.operator :birthdate
+AND humanName.firstname = :given

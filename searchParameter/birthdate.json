@@ -1,0 +1,32 @@
+{
+  "resourceType": "SearchParameter",
+  "id": "individual-birthdate",
+  "url": "http://hl7.org/fhir/SearchParameter/individual-birthdate",
+  "version": "1.0.0",
+  "name": "individual-birthdate",
+  "status": "active",
+  "experimental": false,
+  "date": "2021-12-01T00:00:00.000+00:00",
+  "publisher": "Your Organization",
+  "contact": [
+    {
+      "telecom": [
+        {
+          "system": "url",
+          "value": "http://your-organization.com"
+        }
+      ]
+    }
+  ],
+  "description": "Search by individual's birthdate",
+  "code": "birthdate",
+  "base": [
+    "Patient"
+  ],
+  "type": "date",
+  "expression": "Patient.birthDate",
+  "comparator": [
+    "ge",
+    "le"
+  ]
+}

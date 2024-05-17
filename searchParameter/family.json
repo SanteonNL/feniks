@@ -1,0 +1,13 @@
+{
+    "resourceType": "SearchParameter",
+    "id": "family",
+    "url": "http://example.com/SearchParameter/family",
+    "name": "Family",
+    "status": "active",
+    "base": [
+        "Patient"
+    ],
+    "type": "string",
+    "expression": "Patient.name.family",
+    "description": "Search for patients by family name"
+}

@@ -5,7 +5,6 @@ SELECT
         'id',
         p.identificatienummer,
         'gender',
-        -- targetsystem: https://www.hl7.org/fhir/valueset/gender
         CASE
             WHEN p.geslachtcode = 'M' THEN 'male'
             WHEN p.geslachtcode = 'F' THEN 'female'
@@ -17,7 +16,7 @@ SELECT
                 json_agg(
                     json_build_object(
                         'use',
-                        'official' , -- targetsysem: http://hl7.org/fhir/ValueSet/name-use
+                        'official' ,
                         'given',
                         json_build_array(humanName.firstname, 'fixed secondName'),
                         'family',
@@ -87,5 +86,5 @@ where
 1=1 AND 
 -- whereclause1
 -- whereclause2
-AND humanName.birthDate @birthdate:comparator @birthdate:value
-AND humanName.firstname @given:comparator @given:value
+AND humanName.birthDate :birthdate.operator :birthdate
+AND humanName.firstname = :given
