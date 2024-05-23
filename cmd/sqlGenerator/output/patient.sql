@@ -82,9 +82,3 @@ SELECT
     ) AS json_output
 FROM
     patient p;
-where 
-1=1 AND 
--- whereclause1
--- whereclause2
-AND humanName.birthDate '<=' '20120101'
-AND humanName.firstname = 'tommy'
