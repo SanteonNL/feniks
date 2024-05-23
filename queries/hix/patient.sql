@@ -82,9 +82,3 @@ SELECT
     ) AS json_output
 FROM
     patient p;
-where 
-1=1 AND 
--- whereclause1
--- whereclause2
-AND humanName.birthDate :birthdate.operator :birthdate
-AND humanName.firstname = :given
