@@ -1,36 +1,35 @@
-
 {
-    "resourceType": "Patient", Patient?not:birthdat=ge192k&given=john&code:in=http:valeuset
-    "sqlFile": "patient.sql",    
-    "endpoints": [
+  "resourceType": "Patient",
+  "sqlFile": "patient.sql",
+  "endpoint": [
+    {
+      "searchParameter": [
         {
-            "searchParameters": [
-                {
-                    "code": "birthdate",
-                    "modifier": ["not", "in" ],
-                    "comparator": "eg",
-                    "value": "1974-12-25"
-                },
-                {
-                    "code": "given",
-                    "value": "john"
-                }
-                , {
-                    "code": "code",
-                    "modifier": ["in"],
-                    "value": "Elkenaam"
-                }
-            ],
-            "sqlFile": "patient2.sql"
+          "code": "birthdate",
+          "modifier": ["not", "in"],
+          "comparator": "eg",
+          "value": "1974-12-25"
         },
         {
-            "searchParameters": [
-                {
-                    "code": "family",
-                    "value": "Doe"
-                }
-            ],
-            "sqlFile": "sql2.sql"
+          "code": "given",
+          "value": "john"
+        },
+        {
+          "code": "code",
+          "modifier": ["in"],
+          "value": "Elkenaam"
         }
-    ]
+      ],
+      "sqlFile": "patient2.sql"
+    },
+    {
+      "searchParameter": [
+        {
+          "code": "family",
+          "value": "Doe"
+        }
+      ],
+      "sqlFile": "sql2.sql"
+    }
+  ]
 }

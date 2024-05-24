@@ -1,0 +1,102 @@
+{
+    "resourceType": "Bundle",
+    "type": "collection",
+    "entry": [
+        {
+            "resource": {
+                "resourceType": "RelatedPerson",
+                "patient": {
+                    "reference": "Patient/example"
+                },
+                "relationship": [
+                    {
+                        "coding": [
+                            {
+                                "system": "http://terminology.hl7.org/CodeSystem/v2-0131",
+                                "code": "MTH"
+                            }
+                        ]
+                    }
+                ],
+                "identifier": [
+                    {
+                        "use": "usual",
+                        "type": {
+                            "coding": [
+                                {
+                                    "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                                    "code": "MR"
+                                }
+                            ]
+                        },
+                        "system": "urn:oid:1.2.36.146.595.217.0.1",
+                        "value": "67890"
+                    }
+                ],
+                "gender": "female",
+                "birthDate": "1970-01-01"
+            }
+        },
+        {
+            "resource": {
+                "resourceType": "Patient",
+                "id": "mother",
+                "identifier": [
+                    {
+                        "use": "usual",
+                        "type": {
+                            "coding": [
+                                {
+                                    "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                                    "code": "MR"
+                                }
+                            ]
+                        },
+                        "system": "urn:oid:1.2.36.146.595.217.0.1",
+                        "value": "67890"
+                    }
+                ],
+                "gender": "female",
+                "birthDate": "1970-01-01"
+            }
+        },
+        {
+            "resource": {
+                "resourceType": "Patient",
+                "id": "example",
+                "identifier": [
+                    {
+                        "use": "usual",
+                        "type": {
+                            "coding": [
+                                {
+                                    "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                                    "code": "MR"
+                                }
+                            ]
+                        },
+                        "system": "urn:oid:1.2.36.146.595.217.0.1",
+                        "value": "12345",
+                        "period": {
+                            "start": "2001-05-06"
+                        }
+                    }
+                ],
+                "address": {
+                    "country": "NLD"
+                },
+                "gender": "male",
+                "birthDate": "2001-01-01",
+                "deceasedDateTime": "2016-05-18T00:00:00Z",
+                "link": [
+                    {
+                        "other": {
+                            "reference": "RelatedPerson/mother"
+                        },
+                        "type": "seealso"
+                    }
+                ]
+            }
+        }
+    ]
+}

@@ -1,8 +1,8 @@
 @base = http://localhost:8080
 
 ### Request 1
-GET {{base}}/patients2
-Accept: application/fhir+json
+GET {{base}}/patients
+
 
 ### Request 2
 GET {{base}}/Patient
