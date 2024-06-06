@@ -5,7 +5,7 @@ GET {{base}}/Patient?name=smith
 Accept: application/fhir+json
 
 ### Request 2
-GET {{base}}/Patient
+GET {{base}}/Patient?name=smith
     ?_has:Observation:patient:code=55284-4
     &_elements=id
 

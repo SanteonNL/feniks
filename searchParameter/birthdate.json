@@ -21,10 +21,10 @@
   "description": "Search by individual's birthdate",
   "code": "birthdate",
   "base": [
-    "Patient"
+    "Patient", "RelatedPerson"
   ],
   "type": "date",
-  "expression": "Patient.birthDate",
+  "expression":["Patient.birthDate", "RelatedPerson.birthDate"],
   "comparator": [
     "ge",
     "le"

@@ -5,12 +5,39 @@ GET {{base}}/patients
 
 
 ### Request 2
-GET {{base}}/Patient
-    ?_has:Observation:patient:code=55284-4
-    &_elements=id
+GET {{base}}/patients
+    ?birthdate=1985-05-10
+
+### Request 2
+GET {{base}}/patients
+    ?birthdate=ge1985-05-08
+    &family=Davis
+
+### Request 2
+GET {{base}}/patients
+    ?birthdate=1985-05-10
+    &family=Tommy
+
+
+### Request 2
+GET {{base}}/patients
+    ?birthdate=1990-01-01
+    &family=Hetty
+
+
+
+### Request 2
+GET {{base}}/patients
+    ?birthdate=1990-01-02
+    &family=Hetty
+
+
+### Request 2
+GET {{base}}/patients
+    ?birthdate=1985-05-10    
 
 ### Request 3
 GET {{base}}/Observation
-    ?subject=8bfc938e-7836-4e96-b0d8-92756601e0b5
+    ?su
     &_elements=id,code,value
     &code=55284-4
