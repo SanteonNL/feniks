@@ -31,10 +31,19 @@ GET {{base}}/patients
     ?birthdate=1990-01-02
     &family=Hetty
 
+### Request 2
+GET {{base}}/patients
+    ?birthdate=ge1985-05-10    
 
 ### Request 2
 GET {{base}}/patients
-    ?birthdate=1985-05-10    
+    ?given=Robert    
+
+
+### Request 2
+GET {{base}}/patients
+    ?given=Tommy  
+
 
 ### Request 3
 GET {{base}}/Observation

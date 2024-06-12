@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -98,7 +99,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 			Name: []fhir.HumanName{
 				{
 					Family: util.StringPtr("Hetty"),
-					Given:  []string{"Robert"},
+					Given:  []string{"Robert", "Jane"},
 				},
 			},
 			BirthDate: util.StringPtr("1990-01-01"),
@@ -107,11 +108,11 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 			Name: []fhir.HumanName{
 				{
 					Family: util.StringPtr("Davis"),
-					Given:  []string{"Robert"},
+					Given:  []string{"Henk"},
 				},
 				{
 					Family: util.StringPtr("Davis"),
-					Given:  []string{"Emily"},
+					Given:  []string{"Emily", "Tommy"},
 				},
 			},
 			BirthDate: util.StringPtr("1985-05-10"),
@@ -120,8 +121,9 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 
 	// Filter patients based on search parameters
 	filteredPatients := make([]fhir.Patient, 0)
-	for _, patient := range patients {
+	for i, patient := range patients {
 		if matchesFilters(patient, searchParams) {
+			log.Println("Patient", i, "matches filters")
 			filteredPatients = append(filteredPatients, patient)
 		}
 	}
@@ -137,39 +139,56 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 }
 
 func matchesFilters(patient fhir.Patient, filters []SearchParameter) bool {
-	for _, filter := range filters {
-		log.Println("filter:", filter)
-		switch filter.Code {
-		case "family":
-			if !compare(patient.Name.Family, filter) {
+	return checkFields(reflect.ValueOf(patient), filters)
+}
+
+func checkFields(v reflect.Value, filters []SearchParameter) bool {
+	t := v.Type()
+
+	for i := 0; i < t.NumField(); i++ {
+		fieldType := t.Field(i)
+		fieldValue := v.Field(i)
+
+		jsonTag := fieldType.Tag.Get("json")
+		lowerJsonTag := strings.ToLower(strings.Split(jsonTag, ",")[0])
+
+		if fieldValue.Kind() == reflect.Struct {
+			if !checkFields(fieldValue, filters) {
 				return false
 			}
-		case "given":
-			for _, name := range patient.Name {
-				if !compare(name.Given, filter) {
+		} else if fieldValue.Kind() == reflect.Slice {
+			for j := 0; j < fieldValue.Len(); j++ {
+				sliceElem := fieldValue.Index(j)
+				if sliceElem.Kind() == reflect.Struct {
+					if !checkFields(sliceElem, filters) {
+						return false
+					}
+				}
+			}
+		}
+
+		for _, filter := range filters {
+			if filter.Code == lowerJsonTag {
+				if !compare(fieldValue.Interface(), filter) {
 					return false
 				}
 			}
-		case "birthdate":
-			if !compare(patient.BirthDate, filter) {
-				return false
-			}
 		}
 	}
+
 	return true
 }
 
 func compare(value interface{}, filter SearchParameter) bool {
+	fmt.Println("Interface type:", reflect.TypeOf(value).String())
 	switch filter.Type {
 	case "string":
-		strValue := *value.(*string)
-		filterStrValue := filter.Value
-		switch filter.Comparator {
-		case "eq", "":
-			return strValue == filterStrValue
-		case "ne":
-			return strValue != filterStrValue
-		// Add more comparison types as needed...
+		reflectedType := reflect.TypeOf(value).String()
+		switch reflectedType {
+		case "*string":
+			return compareString(value, filter)
+		case "[]string":
+			return compareStringSlice(value, filter)
 		default:
 			return false
 		}
@@ -214,7 +233,7 @@ func compare(value interface{}, filter SearchParameter) bool {
 	return false
 }
 
-func parseDateComparator(input string, inputType string) (string, string) {
+func parseDateComparator(input string) (string, string) {
 	comparators := []string{"eq", "ne", "gt", "lt", "ge", "le"}
 	for _, comparator := range comparators {
 		if strings.HasPrefix(input, comparator) {
@@ -225,12 +244,12 @@ func parseDateComparator(input string, inputType string) (string, string) {
 	return "", input
 }
 
-func parseComparator(input string, valueType string) (string, string) {
+func parseComparator(input string, valueType string) (comparator string, paramValue string) {
 	switch valueType {
 	case "string":
 		return "", input
 	case "date":
-		comparator, value := parseDateComparator(input, valueType)
+		comparator, value := parseDateComparator(input)
 		return comparator, value
 	case "integer":
 		// Convert input to integer and return
@@ -238,4 +257,44 @@ func parseComparator(input string, valueType string) (string, string) {
 	default:
 		return "", input
 	}
+
+	return "", input
+}
+
+func compareString(value interface{}, filter SearchParameter) bool {
+	strValue := *value.(*string)
+	filterStrValue := filter.Value
+	switch filter.Comparator {
+	case "eq", "":
+		return strValue == filterStrValue
+	case "ne":
+		return strValue != filterStrValue
+	default:
+		return false
+	}
+}
+
+func compareStringSlice(value interface{}, filter SearchParameter) bool {
+	sliceValue := value.([]string)
+	filterStrValue := filter.Value
+	for _, strValue := range sliceValue {
+		switch filter.Comparator {
+		case "eq", "":
+			if strValue == filterStrValue {
+				log.Println("String value matched:", strValue)
+				return true
+			}
+		case "ne":
+			if strValue != filterStrValue {
+				log.Println("String value not matched:", strValue)
+				return true
+			}
+		default:
+			log.Println("Invalid comparator:", filter.Comparator)
+			return false
+		}
+	}
+
+	log.Println("No matching string value found in slice", filterStrValue)
+	return false
 }
