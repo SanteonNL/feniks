@@ -43,6 +43,7 @@ func main() {
 }
 
 func GetAllPatients(w http.ResponseWriter, r *http.Request) {
+	log.Println("GetAllPatients called")
 
 	queryParams := r.URL.Query()
 	searchParams := make([]SearchParameter, 0)
@@ -95,7 +96,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 
 	// Construct a number of FHIR patients with multiple names
 	patients := []fhir.Patient{
-		{
+		{Meta: &fhir.Meta{Id: util.StringPtr("id1")},
 			Name: []fhir.HumanName{
 				{
 					Family: util.StringPtr("Hetty"),
@@ -107,7 +108,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 		{
 			Name: []fhir.HumanName{
 				{
-					Family: util.StringPtr("Davis"),
+					Family: util.StringPtr(""),
 					Given:  []string{"Henk"},
 				},
 				{
@@ -139,40 +140,52 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 }
 
 func matchesFilters(patient fhir.Patient, filters []SearchParameter) bool {
-	return checkFields(reflect.ValueOf(patient), filters)
+	return checkFields(reflect.ValueOf(&patient).Elem(), filters, "")
 }
-
-func checkFields(v reflect.Value, filters []SearchParameter) bool {
-	t := v.Type()
-
-	for i := 0; i < t.NumField(); i++ {
-		fieldType := t.Field(i)
-		fieldValue := v.Field(i)
-
-		jsonTag := fieldType.Tag.Get("json")
-		lowerJsonTag := strings.ToLower(strings.Split(jsonTag, ",")[0])
-
-		if fieldValue.Kind() == reflect.Struct {
-			if !checkFields(fieldValue, filters) {
-				return false
-			}
-		} else if fieldValue.Kind() == reflect.Slice {
-			for j := 0; j < fieldValue.Len(); j++ {
-				sliceElem := fieldValue.Index(j)
-				if sliceElem.Kind() == reflect.Struct {
-					if !checkFields(sliceElem, filters) {
-						return false
-					}
-				}
-			}
+func checkFields(v reflect.Value, filters []SearchParameter, parentFieldName string) bool {
+	// Handle pointer dereference at the beginning
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return false
 		}
+		v = v.Elem()
+		if !checkFields(v, filters, parentFieldName) {
+			return false
+		}
+	}
 
+	if v.Kind() == reflect.String {
+		fieldName := strings.ToLower(parentFieldName)
 		for _, filter := range filters {
-			if filter.Code == lowerJsonTag {
-				if !compare(fieldValue.Interface(), filter) {
+			if filter.Code == fieldName {
+				log.Println("Comparing string value", v.Interface(), "with filter value", filter.Value)
+				if !compare(v.Interface(), filter) {
 					return false
 				}
 			}
+		}
+	}
+
+	// Handle slices by iterating over each element
+	if v.Kind() == reflect.Slice {
+		for i := 0; i < v.Len(); i++ {
+			if !checkFields(v.Index(i), filters, parentFieldName) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Handle structs by iterating over each field
+	if v.Kind() == reflect.Struct {
+		// if parentName == "" {
+		// 	parentName = v.Type().Name()
+		// }
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Field(i)
+			fieldName := v.Type().Field(i).Name
+			//log.Println("Checking field in struct:", v.Type().Field(i).Name, "with value:", field.Interface())
+			checkFields(field, filters, fieldName)
 		}
 	}
 
@@ -180,14 +193,15 @@ func checkFields(v reflect.Value, filters []SearchParameter) bool {
 }
 
 func compare(value interface{}, filter SearchParameter) bool {
-	fmt.Println("Interface type:", reflect.TypeOf(value).String())
 	switch filter.Type {
 	case "string":
 		reflectedType := reflect.TypeOf(value).String()
 		switch reflectedType {
-		case "*string":
-			return compareString(value, filter)
+		case "string":
+			strValue := value.(string)
+			return compareString(strValue, filter)
 		case "[]string":
+			log.Println("Comparing string slice value")
 			return compareStringSlice(value, filter)
 		default:
 			return false
@@ -261,8 +275,7 @@ func parseComparator(input string, valueType string) (comparator string, paramVa
 	return "", input
 }
 
-func compareString(value interface{}, filter SearchParameter) bool {
-	strValue := *value.(*string)
+func compareString(strValue string, filter SearchParameter) bool {
 	filterStrValue := filter.Value
 	switch filter.Comparator {
 	case "eq", "":

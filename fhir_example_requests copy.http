@@ -21,9 +21,17 @@ GET {{base}}/patients
 
 ### Request 2
 GET {{base}}/patients
-    ?birthdate=1990-01-01
-    &family=Hetty
+    ?family=Davis
 
+    
+
+### Request 2
+GET {{base}}/patients
+    ?given=Henk
+
+### Request 2
+GET {{base}}/patients
+    ?family=Hetty
 
 
 ### Request 2
@@ -37,7 +45,7 @@ GET {{base}}/patients
 
 ### Request 2
 GET {{base}}/patients
-    ?given=Robert    
+    ?given=Henk    
 
 
 ### Request 2
