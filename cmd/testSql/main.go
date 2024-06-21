@@ -38,6 +38,7 @@ func main() {
 
 	r := mux.NewRouter()
 	r.HandleFunc("/patients", GetAllPatients).Methods("GET")
+	log.Println("Server started on port 8080")
 	log.Fatal(http.ListenAndServe(":8080", r))
 
 }
@@ -58,14 +59,13 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 		for _, value := range values {
 			typeValue := searchParamsMap[key]
 			comparator, paramValue := parseComparator(value, typeValue)
-
-			searchParam := SearchParameter{
+			param := SearchParameter{
 				Code:       key,
 				Value:      paramValue,
 				Type:       typeValue,
 				Comparator: comparator,
 			}
-			searchParams = append(searchParams, searchParam)
+			searchParams = append(searchParams, param)
 		}
 	}
 
@@ -108,7 +108,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 		{
 			Name: []fhir.HumanName{
 				{
-					Family: util.StringPtr(""),
+					Family: util.StringPtr("Smith"),
 					Given:  []string{"Henk"},
 				},
 				{
@@ -124,7 +124,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 	filteredPatients := make([]fhir.Patient, 0)
 	for i, patient := range patients {
 		if matchesFilters(patient, searchParams) {
-			log.Println("Patient", i, "matches filters")
+			log.Println("Patient", i, "matches filters \n")
 			filteredPatients = append(filteredPatients, patient)
 		}
 	}
@@ -140,56 +140,76 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 }
 
 func matchesFilters(patient fhir.Patient, filters []SearchParameter) bool {
-	return checkFields(reflect.ValueOf(&patient).Elem(), filters, "")
+	return checkFields(reflect.ValueOf(&patient).Elem(), filters, "Patient")
 }
-func checkFields(v reflect.Value, filters []SearchParameter, parentFieldName string) bool {
-	// Handle pointer dereference at the beginning
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return false
-		}
-		v = v.Elem()
-		if !checkFields(v, filters, parentFieldName) {
-			return false
-		}
-	}
+func checkFields(v reflect.Value, filters []SearchParameter, parentField string) bool {
+	// TODO check if rellect.Value is a struct
 
-	if v.Kind() == reflect.String {
-		fieldName := strings.ToLower(parentFieldName)
-		for _, filter := range filters {
-			if filter.Code == fieldName {
-				log.Println("Comparing string value", v.Interface(), "with filter value", filter.Value)
-				if !compare(v.Interface(), filter) {
-					return false
+	matchFound := false // Track if any field matches
+
+	if v.Kind() == reflect.Struct {
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Field(i)
+			fieldName := v.Type().Field(i).Name
+			fieldName = parentField + "." + fieldName
+
+			log.Println("Checking field:", fieldName, "with type:", field.Type().String(), "and kind:", field.Kind())
+
+			if field.Kind() == reflect.Slice {
+				for i := 0; i < field.Len(); i++ {
+					element := field.Index(i)
+					log.Println("Checking kind of element:", element.Kind())
+					if element.Kind() == reflect.Struct {
+						if checkFields(element, filters, fieldName) {
+							matchFound = true
+						}
+					} else if element.Kind() == reflect.String {
+						strValue := element.Interface().(string)
+						log.Println("Checking string value in []string", strValue)
+						for _, filter := range filters {
+							if compareString(strValue, filter) {
+								matchFound = true
+								break // Match found, no need to check further
+							}
+						}
+					}
+				}
+			}
+			if field.Kind() == reflect.Struct {
+				log.Println("Checking nested struct")
+				if checkFields(field, filters, fieldName) {
+					matchFound = true
+				}
+			} else if field.Kind() == reflect.Ptr && field.Elem().Kind() == reflect.Struct {
+				log.Println("Checking pointer to struct")
+				if checkFields(field.Elem(), filters, fieldName) {
+					matchFound = true
+				}
+			} else if field.Kind() == reflect.Ptr && field.Elem().Kind() == reflect.String {
+				ptrValue := field.Interface().(*string)
+				if ptrValue != nil {
+					strValue := *ptrValue
+					log.Println("Checking string value:", strValue)
+					for _, filter := range filters {
+						log.Println("Comparing string value:", strValue, "with filter:", filter.Value)
+						if compareString(strValue, filter) {
+							log.Println("Match found in string value")
+							matchFound = true
+							break // Match found, no need to check further
+						}
+					}
 				}
 			}
 		}
 	}
 
-	// Handle slices by iterating over each element
-	if v.Kind() == reflect.Slice {
-		for i := 0; i < v.Len(); i++ {
-			if !checkFields(v.Index(i), filters, parentFieldName) {
-				return false
-			}
-		}
-		return true
+	if !matchFound {
+		log.Println("No match found in any field")
+		return false
 	}
 
-	// Handle structs by iterating over each field
-	if v.Kind() == reflect.Struct {
-		// if parentName == "" {
-		// 	parentName = v.Type().Name()
-		// }
-		for i := 0; i < v.NumField(); i++ {
-			field := v.Field(i)
-			fieldName := v.Type().Field(i).Name
-			//log.Println("Checking field in struct:", v.Type().Field(i).Name, "with value:", field.Interface())
-			checkFields(field, filters, fieldName)
-		}
-	}
-
-	return true
+	log.Println("Match found in struct")
+	return true // Match found
 }
 
 func compare(value interface{}, filter SearchParameter) bool {
