@@ -29,9 +29,14 @@ GET {{base}}/patients
 GET {{base}}/patients
     ?given=Henk
 
-### Request 2
+### Request 2,/
 GET {{base}}/patients
     ?family=Hetty
+
+
+### Request 2
+GET {{base}}/patients
+    ?given=Robert
 
 
 ### Request 2

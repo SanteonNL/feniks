@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -93,6 +94,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	male := fhir.AdministrativeGenderMale
 
 	// Construct a number of FHIR patients with multiple names
 	patients := []fhir.Patient{
@@ -104,6 +106,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 				},
 			},
 			BirthDate: util.StringPtr("1990-01-01"),
+			Gender:    &male,
 		},
 		{
 			Name: []fhir.HumanName{
@@ -117,6 +120,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 				},
 			},
 			BirthDate: util.StringPtr("1985-05-10"),
+			Gender:    &male,
 		},
 	}
 
@@ -124,7 +128,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 	filteredPatients := make([]fhir.Patient, 0)
 	for i, patient := range patients {
 		if matchesFilters(patient, searchParams) {
-			log.Println("Patient", i, "matches filters \n")
+			log.Println("Patient", i, "matches filters")
 			filteredPatients = append(filteredPatients, patient)
 		}
 	}
@@ -143,127 +147,181 @@ func matchesFilters(patient fhir.Patient, filters []SearchParameter) bool {
 	return checkFields(reflect.ValueOf(&patient).Elem(), filters, "Patient")
 }
 func checkFields(v reflect.Value, filters []SearchParameter, parentField string) bool {
-	// TODO check if rellect.Value is a struct
-
-	matchFound := false // Track if any field matches
-
-	if v.Kind() == reflect.Struct {
-		for i := 0; i < v.NumField(); i++ {
-			field := v.Field(i)
-			fieldName := v.Type().Field(i).Name
-			fieldName = parentField + "." + fieldName
-
-			log.Println("Checking field:", fieldName, "with type:", field.Type().String(), "and kind:", field.Kind())
-
-			if field.Kind() == reflect.Slice {
-				for i := 0; i < field.Len(); i++ {
-					element := field.Index(i)
-					log.Println("Checking kind of element:", element.Kind())
-					if element.Kind() == reflect.Struct {
-						if checkFields(element, filters, fieldName) {
-							matchFound = true
-						}
-					} else if element.Kind() == reflect.String {
-						strValue := element.Interface().(string)
-						log.Println("Checking string value in []string", strValue)
-						for _, filter := range filters {
-							if compareString(strValue, filter) {
-								matchFound = true
-								break // Match found, no need to check further
-							}
-						}
-					}
-				}
-			}
-			if field.Kind() == reflect.Struct {
-				log.Println("Checking nested struct")
-				if checkFields(field, filters, fieldName) {
-					matchFound = true
-				}
-			} else if field.Kind() == reflect.Ptr && field.Elem().Kind() == reflect.Struct {
-				log.Println("Checking pointer to struct")
-				if checkFields(field.Elem(), filters, fieldName) {
-					matchFound = true
-				}
-			} else if field.Kind() == reflect.Ptr && field.Elem().Kind() == reflect.String {
-				ptrValue := field.Interface().(*string)
-				if ptrValue != nil {
-					strValue := *ptrValue
-					log.Println("Checking string value:", strValue)
-					for _, filter := range filters {
-						log.Println("Comparing string value:", strValue, "with filter:", filter.Value)
-						if compareString(strValue, filter) {
-							log.Println("Match found in string value")
-							matchFound = true
-							break // Match found, no need to check further
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if !matchFound {
-		log.Println("No match found in any field")
+	if v.Kind() != reflect.Struct {
+		log.Println("Warning: Value is not a struct")
 		return false
 	}
 
-	log.Println("Match found in struct")
-	return true // Match found
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldName := v.Type().Field(i).Name
+		fullFieldName := parentField + "." + fieldName
+
+		log.Printf("Checking field: %s with type: %s and kind: %v", fullFieldName, field.Type().String(), field.Kind())
+
+		if matchFound := processField(field, filters, fullFieldName); matchFound {
+			return true
+		}
+	}
+
+	log.Println("No match found in any field")
+	return false
 }
 
-func compare(value interface{}, filter SearchParameter) bool {
-	switch filter.Type {
-	case "string":
-		reflectedType := reflect.TypeOf(value).String()
-		switch reflectedType {
-		case "string":
-			strValue := value.(string)
-			return compareString(strValue, filter)
-		case "[]string":
-			log.Println("Comparing string slice value")
-			return compareStringSlice(value, filter)
-		default:
-			return false
+func processField(field reflect.Value, filters []SearchParameter, fieldName string) bool {
+	switch field.Kind() {
+	case reflect.Slice:
+		return processSlice(field, filters, fieldName)
+	case reflect.Struct:
+		return checkFields(field, filters, fieldName)
+	case reflect.Ptr:
+		if !field.IsNil() {
+			return processField(field.Elem(), filters, fieldName)
 		}
-	case "date":
-		dateValue := *value.(*string)
-		filterDateValue := filter.Value
-
-		parsedDateValue, err := time.Parse("2006-01-02", dateValue)
-		if err != nil {
-			log.Println("Error parsing date:", err)
-			return false
-		}
-
-		parsedFilterDateValue, err := time.Parse("2006-01-02", filterDateValue)
-		if err != nil {
-			log.Println("Error parsing filter date:", err)
-			return false
-		}
-
-		switch filter.Comparator {
-		case "eq", "":
-			return parsedDateValue.Equal(parsedFilterDateValue)
-		case "ne":
-			return !parsedDateValue.Equal(parsedFilterDateValue)
-		case "gt":
-			return parsedDateValue.After(parsedFilterDateValue)
-		case "lt":
-			return parsedDateValue.Before(parsedFilterDateValue)
-		case "ge":
-			return parsedDateValue.After(parsedFilterDateValue) || parsedDateValue.Equal(parsedFilterDateValue)
-		case "le":
-			return parsedDateValue.Before(parsedFilterDateValue) || parsedDateValue.Equal(parsedFilterDateValue)
-		default:
-			return false
-		}
-	case "integer":
-		// Convert patientValue and filter.Value to integers and compare them...
 	default:
+		return compareBasicType(field, filters)
+	}
+	return false
+}
+
+func processSlice(field reflect.Value, filters []SearchParameter, fieldName string) bool {
+	for i := 0; i < field.Len(); i++ {
+		element := field.Index(i)
+		log.Printf("Checking element %d of slice %s", i, fieldName)
+		if matchFound := processField(element, filters, fieldName); matchFound {
+			return true
+		}
+	}
+	return false
+}
+
+func compareBasicType(field reflect.Value, filters []SearchParameter) bool {
+	for _, filter := range filters {
+		if compare(field, filter) {
+			log.Printf("Match found for field value: %v", field.Interface())
+			return true
+		}
+	}
+	return false
+}
+
+func compare(field reflect.Value, filter SearchParameter) bool {
+	switch field.Kind() {
+	case reflect.String:
+		return compareString(field.String(), filter)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return compareInt(field.Int(), filter)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return compareUint(field.Uint(), filter)
+	case reflect.Float32, reflect.Float64:
+		return compareFloat(field.Float(), filter)
+	case reflect.Bool:
+		return compareBool(field.Bool(), filter)
+	}
+
+	// Handle time.Time separately as it's not a reflect.Kind
+	if field.Type() == reflect.TypeOf(time.Time{}) {
+		return compareTime(field.Interface().(time.Time), filter)
+	}
+
+	log.Printf("Unsupported type for comparison: %v", field.Kind())
+	return false
+}
+
+func compareString(value string, filter SearchParameter) bool {
+	switch filter.Comparator {
+	case "eq":
+		return strings.EqualFold(value, filter.Value)
+	case "contains":
+		return strings.Contains(strings.ToLower(value), strings.ToLower(filter.Value))
+	default:
+		return strings.EqualFold(value, filter.Value)
+	}
+}
+
+func compareInt(value int64, filter SearchParameter) bool {
+	filterValue, err := strconv.ParseInt(filter.Value, 10, 64)
+	if err != nil {
+		log.Printf("Error parsing int filter value: %v", err)
 		return false
 	}
 
+	switch filter.Comparator {
+	case "eq":
+		return value == filterValue
+	case "gt":
+		return value > filterValue
+	case "lt":
+		return value < filterValue
+		// Add more integer comparison operators as needed
+	}
+	return false
+}
+
+func compareUint(value uint64, filter SearchParameter) bool {
+	filterValue, err := strconv.ParseUint(filter.Value, 10, 64)
+	if err != nil {
+		log.Printf("Error parsing uint filter value: %v", err)
+		return false
+	}
+
+	switch filter.Comparator {
+	case "eq":
+		return value == filterValue
+	case "gt":
+		return value > filterValue
+	case "lt":
+		return value < filterValue
+		// Add more unsigned integer comparison operators as needed
+	}
+	return false
+}
+
+func compareFloat(value float64, filter SearchParameter) bool {
+	filterValue, err := strconv.ParseFloat(filter.Value, 64)
+	if err != nil {
+		log.Printf("Error parsing float filter value: %v", err)
+		return false
+	}
+
+	switch filter.Comparator {
+	case "eq":
+		return value == filterValue
+	case "gt":
+		return value > filterValue
+	case "lt":
+		return value < filterValue
+		// Add more float comparison operators as needed
+	}
+	return false
+}
+
+func compareBool(value bool, filter SearchParameter) bool {
+	filterValue, err := strconv.ParseBool(filter.Value)
+	if err != nil {
+		log.Printf("Error parsing bool filter value: %v", err)
+		return false
+	}
+
+	return value == filterValue
+}
+
+func compareTime(value time.Time, filter SearchParameter) bool {
+	filterValue, err := time.Parse(time.RFC3339, filter.Value)
+	if err != nil {
+		log.Printf("Error parsing time filter value: %v", err)
+		return false
+	}
+
+	switch filter.Comparator {
+	case "eq":
+		return value.Equal(filterValue)
+	case "gt":
+		return value.After(filterValue)
+	case "lt":
+		return value.Before(filterValue)
+		// Add more time comparison operators as needed
+	}
 	return false
 }
 
@@ -295,19 +353,7 @@ func parseComparator(input string, valueType string) (comparator string, paramVa
 	return "", input
 }
 
-func compareString(strValue string, filter SearchParameter) bool {
-	filterStrValue := filter.Value
-	switch filter.Comparator {
-	case "eq", "":
-		return strValue == filterStrValue
-	case "ne":
-		return strValue != filterStrValue
-	default:
-		return false
-	}
-}
-
-func compareStringSlice(value interface{}, filter SearchParameter) bool {
+func compareSlice(value interface{}, filter SearchParameter) bool {
 	sliceValue := value.([]string)
 	filterStrValue := filter.Value
 	for _, strValue := range sliceValue {

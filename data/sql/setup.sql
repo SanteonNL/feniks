@@ -160,3 +160,39 @@ VALUES ('789', '789M');
 
 INSERT INTO public.couple (patient_id, mother_id)
 VALUES ('234', '234M');
+
+
+CREATE TABLE contacts (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100),
+    relationship VARCHAR(50),
+    gender VARCHAR(10),
+    organization VARCHAR(100),
+    patient_id VARCHAR(50)
+);
+
+INSERT INTO contacts (id, name, relationship, gender, organization, patient_id)
+VALUES ('456', 'John Doe', 'Friend', 'male', 'Hospital A', '123');
+
+INSERT INTO contacts (id, name, relationship, gender, organization, patient_id)
+VALUES ('789', 'Jane Smith', 'Family', 'female', 'Hospital B', '123');
+
+
+CREATE TABLE contact_points (
+    id SERIAL PRIMARY KEY,
+    contact_id VARCHAR(50),
+    system VARCHAR(50),
+    value VARCHAR(100),
+    use VARCHAR(50),
+    FOREIGN KEY (contact_id) REFERENCES contacts(id)
+);
+
+INSERT INTO contact_points (contact_id, system, value, use)
+VALUES ('456', 'phone', '+1234567890', 'home');
+
+INSERT INTO contact_points (contact_id, system, value, use)
+VALUES ('456', 'email', 'john.doe@example.com', 'work');
+
+INSERT INTO contact_points (contact_id, system, value, use)
+VALUES ('789', 'phone', '+9876543210', 'mobile');
+
