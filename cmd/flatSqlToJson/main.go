@@ -5,6 +5,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/jmoiron/sqlx"
@@ -109,7 +110,7 @@ GROUP BY
 		//	log.Debug().Msgf("fieldName: %s, parentID: %s, rowData: %v", fieldName, parentID, rowData)
 	}
 
-	err = populateStruct(s, resultMap, "Patient")
+	err = populateStruct(s, resultMap, "")
 	if err != nil {
 		return err
 	}
@@ -121,56 +122,36 @@ func populateStruct(s interface{}, resultMap map[string]map[string][]RowData, pa
 	v := reflect.ValueOf(s).Elem()
 	t := v.Type()
 
+	structName := reflect.TypeOf(s).Elem().Name()
+
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		fieldName := field.Name
-		if parentPath != "" {
-			fieldName = parentPath + "." + fieldName
+
+		if parentPath == "" {
+			parentPath = structName
 		}
 
-		if data, ok := resultMap[fieldName]; ok {
-			log.Debug().Msgf("fieldName: %s", fieldName)
+		//fieldPath := parentPath + "." + fieldName
+
+		//log.Debug().Msgf("fieldName before if: %s", fieldName)
+
+		if data, ok := resultMap[structName]; ok {
+			//log.Debug().Msgf("fieldPath: %s", fieldPath)
 
 			parentID := ""
 			if idField := v.FieldByName("ID"); idField.IsValid() {
 				parentID = idField.String()
 			}
 
-			log.Debug().Msgf("parentID: %s, data[] %v", parentID, data["123"])
+			log.Debug().Msgf("parentID: %s, data[] %v", parentID, data[parentID])
 
-			if rowsSlice, ok := data[parentID]; ok {
+			if rowsSlice, ok := data[parentID]; ok && len(rowsSlice) == 1 {
 				fieldValue := v.Field(i)
-				log.Debug().Msgf("fieldValue: %v, rowSlice %v", fieldValue, rowsSlice)
-
-				if field.Type.Kind() == reflect.Struct {
-					// Recursively populate nested structs
-					err := populateStruct(fieldValue.Addr().Interface(), resultMap, fieldName)
-					if err != nil {
-						return err
-					}
-				} else if field.Type.Kind() == reflect.Slice {
-					// Handle slices
-					sliceType := field.Type.Elem()
-					slice := reflect.MakeSlice(field.Type, len(rowsSlice), len(rowsSlice))
-
-					for j, row := range rowsSlice {
-						elem := reflect.New(sliceType).Elem()
-						err := populateStructFromRow(elem, row)
-						if err != nil {
-							return err
-						}
-						slice.Index(j).Set(elem)
-					}
-
-					fieldValue.Set(slice)
-				} else {
-					// Handle simple fields
-					if len(rowsSlice) > 0 {
-						err := populateStructFromRow(fieldValue, rowsSlice[0])
-						if err != nil {
-							return err
-						}
-					}
+				log.Debug().Msgf("fieldName %s, fieldValue: %v, rowSlice %v", fieldName, fieldValue, rowsSlice)
+				err := populateStructFromRow(fieldValue, fieldName, rowsSlice[0])
+				if err != nil {
+					return err
 				}
 			}
 		}
@@ -179,12 +160,20 @@ func populateStruct(s interface{}, resultMap map[string]map[string][]RowData, pa
 	return nil
 }
 
-func populateStructFromRow(fieldValue reflect.Value, row RowData) error {
+func populateStructFromRow(fieldValue reflect.Value, fieldName string, row RowData) error {
 	for key, value := range row {
-		if field := fieldValue.FieldByName(key); field.IsValid() && field.CanSet() {
-			err := setFieldValue(field, value)
-			if err != nil {
-				return err
+		log.Debug().Msgf("key: %s, fieldName %s, value: %v", key, fieldName, value)
+		fieldNameLower := strings.ToLower(fieldName)
+		if fieldNameLower == key {
+			log.Debug().Msgf("Setting value for field %s: %v", fieldName, value)
+			if fieldValue.Kind() == reflect.Ptr {
+				fieldValue = fieldValue.Elem()
+			}
+			if field := fieldValue.FieldByName(key); field.IsValid() && field.CanSet() {
+				err := setFieldValue(field, value)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
