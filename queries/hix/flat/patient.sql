@@ -28,3 +28,27 @@ GROUP BY
     p.identificatienummer, humanName.lastname,humanName.firstname;
 
 
+SELECT
+    'Patient.Contact' AS field_name,
+    p.identificatienummer AS parent_id,
+    c.id AS id
+FROM
+    patient p
+    JOIN contacts c ON c.patient_id = p.identificatienummer
+WHERE 1=1
+    AND p.identificatienummer = '123';
+
+SELECT
+    'Patient.Contact.ContactPoint' AS field_name,
+    c.id AS parent_id,
+    CONCAT(c.id, cp.system) AS id,
+    cp.system,
+    cp.value
+FROM
+    patient p
+    JOIN contacts c ON c.patient_id = p.identificatienummer
+    JOIN contact_points cp ON c.id = cp.contact_id
+WHERE 1=1
+ AND p.identificatienummer = '123'
+GROUP BY
+    p.identificatienummer, cp.system, cp.value, c.id;
