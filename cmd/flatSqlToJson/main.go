@@ -93,7 +93,7 @@ WHERE 1=1
     AND p.identificatienummer = '123';
 
 SELECT
-    'Patient.Contact.ContactPoint' AS field_name,
+    'Patient.Contact.Telecom' AS field_name,
     c.id AS parent_id,
     CONCAT(c.id, cp.system) AS id,
     cp.system,
@@ -245,13 +245,19 @@ func populateBasicType(field reflect.Value, resultMap map[string]map[string][]Ro
 
 func populateSlice(field reflect.Value, resultMap map[string]map[string][]RowData, fieldName string) error {
 	if data, ok := resultMap[fieldName]; ok {
-		for _, rows := range data {
+		for parentID, rows := range data {
 			for _, row := range rows {
 				newElem := reflect.New(field.Type().Elem()).Elem()
 				err := populateStructFromRow(newElem.Addr().Interface(), row)
 				if err != nil {
 					return err
 				}
+
+				// Set the parent ID if the struct has an ID field
+				if idField := newElem.FieldByName("I"); idField.IsValid() && idField.CanSet() {
+					idField.SetString(parentID)
+				}
+
 				field.Set(reflect.Append(field, newElem))
 			}
 		}
