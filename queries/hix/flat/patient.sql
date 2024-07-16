@@ -39,7 +39,7 @@ WHERE 1=1
     AND p.identificatienummer = '123';
 
 SELECT
-    'Patient.Contact.ContactPoint' AS field_name,
+    'Patient.Contact.Telecom' AS field_name,
     c.id AS parent_id,
     CONCAT(c.id, cp.system) AS id,
     cp.system,
