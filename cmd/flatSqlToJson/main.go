@@ -171,15 +171,20 @@ func populateStruct(v reflect.Value, resultMap map[string]map[string][]RowData, 
 		}
 	}
 
-	// Recursively populate nested fields
+	structID := ""
+	if idField := v.FieldByName("Id"); idField.IsValid() && idField.Kind() == reflect.Ptr && idField.Type().Elem().Kind() == reflect.String {
+		if idField.Elem().IsValid() {
+			structID = idField.Elem().String()
+		}
+	}
+
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
 		fieldName := v.Type().Field(i).Name
 		newFullFieldName := fullFieldName + "." + fieldName
 
-		// Check if this field or any of its nested fields exist in the resultMap
 		if fieldExistsInResultMap(resultMap, newFullFieldName) {
-			err := populateField(field, resultMap, newFullFieldName)
+			err := populateField(field, resultMap, newFullFieldName, structID)
 			if err != nil {
 				return err
 			}
@@ -192,13 +197,12 @@ func populateStruct(v reflect.Value, resultMap map[string]map[string][]RowData, 
 func fieldExistsInResultMap(resultMap map[string]map[string][]RowData, fieldName string) bool {
 	// Check if the field itself exists
 	if _, ok := resultMap[fieldName]; ok {
-		log.Debug().Msgf("Field exists in resultMap: %s", fieldName)
+		// log.Debug().Msgf("Field exists in resultMap: %s", fieldName)
 		return true
 	}
 
 	// Check if any nested fields exist
 	for key := range resultMap {
-		log.Debug().Msgf("Checking if nested field exists in resultMap: %s", key)
 		if strings.HasPrefix(key, fieldName+".") {
 			log.Debug().Msgf("Nested field exists in resultMap: %s", key)
 			return true
@@ -207,18 +211,18 @@ func fieldExistsInResultMap(resultMap map[string]map[string][]RowData, fieldName
 	return false
 }
 
-func populateField(field reflect.Value, resultMap map[string]map[string][]RowData, fieldName string) error {
-	log.Debug().Msgf("Populating field in populateField: %s", fieldName)
+func populateField(field reflect.Value, resultMap map[string]map[string][]RowData, fieldName string, parentID string) error {
+	log.Debug().Msgf("Populating field in populateField: %s and parentID", fieldName, parentID)
 	switch field.Kind() {
 	case reflect.Slice:
-		return populateSlice(field, resultMap, fieldName)
+		return populateSlice(field, resultMap, fieldName, parentID)
 	case reflect.Struct:
 		return populateStruct(field, resultMap, fieldName)
 	case reflect.Ptr:
 		if field.IsNil() {
 			field.Set(reflect.New(field.Type().Elem()))
 		}
-		return populateField(field.Elem(), resultMap, fieldName)
+		return populateField(field.Elem(), resultMap, fieldName, parentID)
 	default:
 		return populateBasicType(field, resultMap, fieldName)
 	}
@@ -248,42 +252,51 @@ func populateBasicType(field reflect.Value, resultMap map[string]map[string][]Ro
 	return nil
 }
 
-func populateSlice(field reflect.Value, resultMap map[string]map[string][]RowData, fieldName string) error {
+func populateSlice(field reflect.Value, resultMap map[string]map[string][]RowData, fieldName string, parentID string) error {
+	log.Debug().Msgf("Populating slice field: %s with parentID: %s", fieldName, parentID)
 	if data, ok := resultMap[fieldName]; ok {
-		for parentID, rows := range data {
-			for _, row := range rows {
-				newElem := reflect.New(field.Type().Elem()).Elem()
-				err := populateStructFromRow(newElem.Addr().Interface(), row)
-				if err != nil {
-					return err
+		rows, exists := data[parentID]
+		if !exists {
+			log.Debug().Msgf("No rows found for parentID: %s in field: %s", parentID, fieldName)
+			return nil
+		}
+
+		for _, row := range rows {
+			newElem := reflect.New(field.Type().Elem()).Elem()
+			err := populateStructFromRow(newElem.Addr().Interface(), row)
+			if err != nil {
+				return err
+			}
+
+			// Get the ID of the new element
+			newElemID := ""
+			if idField := newElem.FieldByName("Id"); idField.IsValid() && idField.Kind() == reflect.Ptr && idField.Type().Elem().Kind() == reflect.String {
+				if idField.Elem().IsValid() {
+					newElemID = idField.Elem().String()
 				}
+			}
 
-				// Set the parent ID if the struct has an ID field
-				if idField := newElem.FieldByName("I"); idField.IsValid() && idField.CanSet() {
-					idField.SetString(parentID)
-				}
+			// Recursively populate nested fields
+			for i := 0; i < newElem.NumField(); i++ {
+				nestedField := newElem.Field(i)
+				nestedFieldName := newElem.Type().Field(i).Name
+				nestedFullFieldName := fieldName + "." + nestedFieldName
 
-				// Recursively populate nested fields
-				for i := 0; i < newElem.NumField(); i++ {
-					nestedField := newElem.Field(i)
-					nestedFieldName := newElem.Type().Field(i).Name
-					nestedFullFieldName := fieldName + "." + nestedFieldName
-
-					if fieldExistsInResultMap(resultMap, nestedFullFieldName) {
-						err := populateField(nestedField, resultMap, nestedFullFieldName)
-						if err != nil {
-							return err
-						}
+				if fieldExistsInResultMap(resultMap, nestedFullFieldName) {
+					err := populateField(nestedField, resultMap, nestedFullFieldName, newElemID)
+					if err != nil {
+						return err
 					}
 				}
-
-				field.Set(reflect.Append(field, newElem))
 			}
+
+			field.Set(reflect.Append(field, newElem))
 		}
+	} else {
+		log.Debug().Msgf("No data found for field: %s", fieldName)
 	}
 	return nil
 }
-
 func populateStructFromRow(obj interface{}, row RowData) error {
 	v := reflect.ValueOf(obj).Elem()
 	t := v.Type()
