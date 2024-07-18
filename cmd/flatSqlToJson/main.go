@@ -12,6 +12,7 @@ import (
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -23,8 +24,9 @@ type SearchParameter struct {
 }
 
 func main() {
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Caller().Logger()
-	logger.Debug().Msg("Starting flatSqlToJson")
+	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) { w.Out = os.Stdout })).With().Timestamp().Caller().Logger()
+
+	log.Debug().Msg("Starting flatSqlToJson")
 
 	db, err := sqlx.Connect("postgres", "postgres://postgres:mysecretpassword@localhost:5432/tsl_employee?sslmode=disable")
 	if err != nil {
@@ -36,7 +38,7 @@ func main() {
 
 	err = PopulateStructs(db, &patient)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to populate struct")
+		log.Fatal().Stack().Err(errors.WithStack(err)).Msg("Failed to populate struct")
 		return
 	}
 
@@ -96,7 +98,6 @@ SELECT
     'Patient.Contact.Telecom' AS field_name,
     c.id AS parent_id,
     CONCAT(c.id, cp.system) AS id,
-    cp.system,
     cp.value
 FROM
     patient p
@@ -111,6 +112,7 @@ GROUP BY
 	if err != nil {
 		return err
 	}
+
 	defer rows.Close()
 
 	resultMap := make(map[string]map[string][]RowData)
@@ -190,12 +192,15 @@ func populateStruct(v reflect.Value, resultMap map[string]map[string][]RowData, 
 func fieldExistsInResultMap(resultMap map[string]map[string][]RowData, fieldName string) bool {
 	// Check if the field itself exists
 	if _, ok := resultMap[fieldName]; ok {
+		log.Debug().Msgf("Field exists in resultMap: %s", fieldName)
 		return true
 	}
 
 	// Check if any nested fields exist
 	for key := range resultMap {
+		log.Debug().Msgf("Checking if nested field exists in resultMap: %s", key)
 		if strings.HasPrefix(key, fieldName+".") {
+			log.Debug().Msgf("Nested field exists in resultMap: %s", key)
 			return true
 		}
 	}
@@ -256,6 +261,20 @@ func populateSlice(field reflect.Value, resultMap map[string]map[string][]RowDat
 				// Set the parent ID if the struct has an ID field
 				if idField := newElem.FieldByName("I"); idField.IsValid() && idField.CanSet() {
 					idField.SetString(parentID)
+				}
+
+				// Recursively populate nested fields
+				for i := 0; i < newElem.NumField(); i++ {
+					nestedField := newElem.Field(i)
+					nestedFieldName := newElem.Type().Field(i).Name
+					nestedFullFieldName := fieldName + "." + nestedFieldName
+
+					if fieldExistsInResultMap(resultMap, nestedFullFieldName) {
+						err := populateField(nestedField, resultMap, nestedFullFieldName)
+						if err != nil {
+							return err
+						}
+					}
 				}
 
 				field.Set(reflect.Append(field, newElem))
@@ -350,7 +369,7 @@ func SetField(obj interface{}, name string, value interface{}) error {
 		field.Set(newValue)
 	} else {
 		if field.Type() != fieldValue.Type() {
-			return fmt.Errorf("provided value type didn't match obj field type")
+			return fmt.Errorf("provided value type didn't match obj field type %s and %s ", field.Type(), fieldValue.Type())
 		}
 
 		field.Set(fieldValue)
