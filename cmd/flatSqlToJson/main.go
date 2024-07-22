@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/SanteonNL/fenix/models/fhir"
+	"github.com/SanteonNL/fenix/util"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
@@ -53,61 +54,13 @@ func main() {
 }
 
 func PopulateStructs(db *sqlx.DB, s interface{}) error {
-	query := `
-    SELECT
-    'Patient' as field_name,
-    '' as parent_id,
-    p.identificatienummer Id,
-    CASE
-        WHEN p.geslachtcode = 'M' THEN 'male'
-        WHEN p.geslachtcode = 'F' THEN 'female'
-        ELSE 'unknown'
-    END as gender, 
-    p.geboortedatum Birthdate
-    FROM patient p
-WHERE 1=1
- AND p.identificatienummer = '123';
+	queryPath := util.GetAbsolutePath("queries/hix/flat/patient_union.sql")
 
-
-SELECT
-    'Patient.Name' as field_name,
-    p.identificatienummer as parent_id,
-    concat(p.identificatienummer,humanName.lastname) AS id,
-    humanName.lastname as family,
-    humanName.firstname AS name
-FROM
-    patient p
-    JOIN names humanName ON humanName.identificatienummer = p.identificatienummer
-WHERE 1=1
- AND p.identificatienummer = '123'   
-GROUP BY
-    p.identificatienummer, humanName.lastname,humanName.firstname;
-
-
-SELECT
-    'Patient.Contact' AS field_name,
-    p.identificatienummer AS parent_id,
-    c.id AS id
-FROM
-    patient p
-    JOIN contacts c ON c.patient_id = p.identificatienummer
-WHERE 1=1
-    AND p.identificatienummer = '123';
-
-SELECT
-    'Patient.Contact.Telecom' AS field_name,
-    c.id AS parent_id,
-    CONCAT(c.id, cp.system) AS id,
-    cp.system,
-    cp.value
-FROM
-    patient p
-    JOIN contacts c ON c.patient_id = p.identificatienummer
-    JOIN contact_points cp ON c.id = cp.contact_id
-WHERE 1=1
- AND p.identificatienummer = '123'
-GROUP BY
-    p.identificatienummer, cp.system, cp.value, c.id;	`
+	queryBytes, err := os.ReadFile(queryPath)
+	if err != nil {
+		return err
+	}
+	query := string(queryBytes)
 
 	rows, err := db.Queryx(query)
 	if err != nil {
@@ -213,7 +166,7 @@ func fieldExistsInResultMap(resultMap map[string]map[string][]RowData, fieldName
 }
 
 func populateField(field reflect.Value, resultMap map[string]map[string][]RowData, fieldName string, parentID string) error {
-	log.Debug().Msgf("Populating field in populateField: %s and parentID", fieldName, parentID)
+	log.Debug().Msgf("Populating field %s in populateField: %s and parentID", fieldName, parentID)
 	switch field.Kind() {
 	case reflect.Slice:
 		return populateSlice(field, resultMap, fieldName, parentID)

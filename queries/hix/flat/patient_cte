@@ -1,0 +1,27 @@
+WITH joined_data AS (
+    SELECT
+        p.identificatienummer,
+        humanName.lastname AS family,
+        humanName.firstname AS name,
+        c.id AS contact_id
+    FROM
+        patient p
+        JOIN names humanName ON humanName.identificatienummer = p.identificatienummer
+        JOIN contacts c ON c.patient_id = p.identificatienummer
+    WHERE
+        p.identificatienummer = '123'
+)
+-- First query
+SELECT
+    j.identificatienummer,
+    j.family,
+    j.name
+FROM
+    joined_data j;
+
+-- Second query
+SELECT
+    j.identificatienummer,
+    j.contact_id
+FROM
+    joined_data j;
