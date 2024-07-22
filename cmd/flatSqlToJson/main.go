@@ -58,11 +58,11 @@ func PopulateStructs(db *sqlx.DB, s interface{}) error {
     'Patient' as field_name,
     '' as parent_id,
     p.identificatienummer Id,
-    -- CASE
-    --     WHEN p.geslachtcode = 'M' THEN 'male'
-    --     WHEN p.geslachtcode = 'F' THEN 'female'
-    --     ELSE 'unknown'
-    -- END as gender, 
+    CASE
+        WHEN p.geslachtcode = 'M' THEN 'male'
+        WHEN p.geslachtcode = 'F' THEN 'female'
+        ELSE 'unknown'
+    END as gender, 
     p.geboortedatum Birthdate
     FROM patient p
 WHERE 1=1
@@ -98,6 +98,7 @@ SELECT
     'Patient.Contact.Telecom' AS field_name,
     c.id AS parent_id,
     CONCAT(c.id, cp.system) AS id,
+    cp.system,
     cp.value
 FROM
     patient p
@@ -335,6 +336,28 @@ func SetField(obj interface{}, name string, value interface{}) error {
 
 	if !field.CanSet() {
 		return fmt.Errorf("cannot set field %s", name)
+	}
+
+	// Check if the field is a pointer to a type that implements UnmarshalJSON
+	if field.Kind() == reflect.Ptr {
+		if field.IsNil() {
+			field.Set(reflect.New(field.Type().Elem()))
+		}
+		unmarshalJSONMethod := field.MethodByName("UnmarshalJSON")
+		if unmarshalJSONMethod.IsValid() {
+			// Convert the value to JSON
+			jsonValue, err := json.Marshal(value)
+			if err != nil {
+				return fmt.Errorf("failed to marshal value to JSON: %v", err)
+			}
+
+			// Call UnmarshalJSON
+			results := unmarshalJSONMethod.Call([]reflect.Value{reflect.ValueOf(jsonValue)})
+			if len(results) > 0 && !results[0].IsNil() {
+				return results[0].Interface().(error)
+			}
+			return nil
+		}
 	}
 
 	fieldValue := reflect.ValueOf(value)
