@@ -33,10 +33,16 @@ type SQLDataSource struct {
 	db    *sqlx.DB
 	query string
 }
+type FieldMapping struct {
+	FHIRField     string
+	FieldName     string
+	IDField       string
+	ParentIDField string
+}
 
 type ColumnMapper struct {
-	csvToFHIR map[string]string
-	fieldName string
+	csvToFHIR        map[string]FieldMapping
+	defaultFieldName string
 }
 
 type CSVDataSource struct {
@@ -66,12 +72,14 @@ func main() {
 
 	SQLDataSource := NewSQLDataSource(db, query)
 
-	// Setup voor CSV DataSource
-	csvToFHIR := map[string]string{
-		"Identificatienummer": "Id",
-		"GeslachtCode":        "Gender",
-		"Geboortedatum":       "BirthDate",
+	csvToFHIR := map[string]FieldMapping{
+		"Identificatienummer": {FHIRField: "id", FieldName: "Patient", IDField: "Identificatienummer", ParentIDField: ""},
+		"Geboortedatum":       {FHIRField: "birthDate", FieldName: "Patient", IDField: "Identificatienummer", ParentIDField: ""},
+		"Voornaam":            {FHIRField: "text", FieldName: "Patient.Name", IDField: "Identificatienummer", ParentIDField: "Identificatienummer"},
+		"Achternaam":          {FHIRField: "family", FieldName: "Patient.Name", IDField: "Identificatienummer", ParentIDField: "Identificatienummer"},
+		"GeslachtCode":        {FHIRField: "gender", FieldName: "Patient", IDField: "Identificatienummer", ParentIDField: ""},
 	}
+
 	csvMapper := NewColumnMapper(csvToFHIR, "Patient")
 	csvDataSource := NewCSVDataSource("test/data/sim/patient.csv", csvMapper)
 
@@ -163,6 +171,7 @@ func (c *CSVDataSource) Read() ([]map[string]interface{}, error) {
 	}
 
 	var result []map[string]interface{}
+
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
@@ -173,31 +182,34 @@ func (c *CSVDataSource) Read() ([]map[string]interface{}, error) {
 		}
 
 		row := make(map[string]interface{})
-		for i, value := range record {
-			csvHeader := headers[i]
-			if fhirField, ok := c.mapper.csvToFHIR[csvHeader]; ok {
-				row[fhirField] = value
-			} else {
-				row[csvHeader] = value
+		for i, header := range headers {
+			if mapping, ok := c.mapper.csvToFHIR[header]; ok {
+				if record[i] != "" {
+					row[mapping.FieldName] = record[i]
+				}
 			}
 		}
-
-		log.Debug().Msgf("Populated row: %v", row)
-
-		// Voeg field_name toe
-		row["field_name"] = c.mapper.fieldName
-
 		result = append(result, row)
 	}
 
 	return result, nil
 }
 
+// Helper function to get the index of a column in the headers
+func getColumnIndex(headers []string, column string) int {
+	for i, header := range headers {
+		if header == column {
+			return i
+		}
+	}
+	return -1 // Return -1 if the column is not found
+}
+
 // Functie om een nieuwe ColumnMapper te maken
-func NewColumnMapper(csvToFHIR map[string]string, fieldName string) ColumnMapper {
+func NewColumnMapper(csvToFHIR map[string]FieldMapping, defaultFieldName string) ColumnMapper {
 	return ColumnMapper{
-		csvToFHIR: csvToFHIR,
-		fieldName: fieldName,
+		csvToFHIR:        csvToFHIR,
+		defaultFieldName: defaultFieldName,
 	}
 }
 
@@ -209,6 +221,7 @@ func ExtractAndMapData(ds DataSource, s interface{}) error {
 
 	resultMap := make(map[string]map[string][]map[string]interface{})
 	for _, row := range data {
+		log.Debug().Msgf("Row: %v", row)
 		fieldName := row["field_name"].(string)
 		parentID := ""
 		if pid, ok := row["parent_id"]; ok {
