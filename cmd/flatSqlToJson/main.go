@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strconv"
@@ -18,13 +20,33 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type RowData map[string]interface{}
 type SearchParameter struct {
 	FieldName string
 	Value     interface{}
 }
 
+type DataSource interface {
+	Read() ([]map[string]interface{}, error)
+}
+
+type SQLDataSource struct {
+	db    *sqlx.DB
+	query string
+}
+
+type ColumnMapper struct {
+	csvToFHIR map[string]string
+	fieldName string
+}
+
+type CSVDataSource struct {
+	filePath string
+	mapper   ColumnMapper
+}
+
 func main() {
+	startTime := time.Now()
+
 	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) { w.Out = os.Stdout })).With().Timestamp().Caller().Logger()
 
 	log.Debug().Msg("Starting flatSqlToJson")
@@ -32,12 +54,39 @@ func main() {
 	db, err := sqlx.Connect("postgres", "postgres://postgres:mysecretpassword@localhost:5432/tsl_employee?sslmode=disable")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to the database")
-		return
+	}
+
+	queryPath := util.GetAbsolutePath("queries/hix/flat/patient_union.sql")
+
+	queryBytes, err := os.ReadFile(queryPath)
+	if err != nil {
+		log.Fatal().Msgf("Failed to read query file: %s", queryPath)
+	}
+	query := string(queryBytes)
+
+	SQLDataSource := NewSQLDataSource(db, query)
+
+	// Setup voor CSV DataSource
+	csvToFHIR := map[string]string{
+		"Identificatienummer": "Id",
+		"GeslachtCode":        "Gender",
+		"Geboortedatum":       "BirthDate",
+	}
+	csvMapper := NewColumnMapper(csvToFHIR, "Patient")
+	csvDataSource := NewCSVDataSource("test/data/sim/patient.csv", csvMapper)
+
+	// Kies welke DataSource je wilt gebruiken
+	var dataSource DataSource
+	useCSV := true // Zet dit op false om SQL te gebruiken
+	if useCSV {
+		dataSource = csvDataSource
+	} else {
+		dataSource = SQLDataSource
 	}
 
 	patient := fhir.Patient{}
 
-	err = PopulateStructs(db, &patient)
+	err = ExtractAndMapData(dataSource, &patient)
 	if err != nil {
 		log.Fatal().Stack().Err(errors.WithStack(err)).Msg("Failed to populate struct")
 		return
@@ -51,57 +100,132 @@ func main() {
 
 	fmt.Println("JSON data:")
 	fmt.Println(string(jsonData))
+
+	endTime := time.Now()
+	duration := endTime.Sub(startTime)
+	log.Debug().Msgf("Execution time: %s", duration)
 }
 
-func PopulateStructs(db *sqlx.DB, s interface{}) error {
-	queryPath := util.GetAbsolutePath("queries/hix/flat/patient_union.sql")
-
-	queryBytes, err := os.ReadFile(queryPath)
-	if err != nil {
-		return err
+func NewSQLDataSource(db *sqlx.DB, query string) *SQLDataSource {
+	return &SQLDataSource{
+		db:    db,
+		query: query,
 	}
-	query := string(queryBytes)
+}
 
-	rows, err := db.Queryx(query)
+func (s *SQLDataSource) Read() ([]map[string]interface{}, error) {
+	rows, err := s.db.Queryx(s.query)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
 	defer rows.Close()
 
-	resultMap := make(map[string]map[string][]RowData)
-
-	for {
-		if !rows.Next() {
-			if err := rows.Err(); err != nil {
-				return err
-			}
-			if !rows.NextResultSet() {
-				break
-			}
-			continue
-		}
-
-		rowData := make(RowData)
-		err = rows.MapScan(rowData)
+	var result []map[string]interface{}
+	for rows.Next() {
+		row := make(map[string]interface{})
+		err = rows.MapScan(row)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		fieldName := rowData["field_name"].(string)
-		parentID := rowData["parent_id"].(string)
+		// Verwijder NULL waarden
+		for key, value := range row {
+			if value == nil {
+				delete(row, key)
+			}
+		}
+
+		result = append(result, row)
+	}
+
+	return result, nil
+}
+
+func NewCSVDataSource(filePath string, mapper ColumnMapper) *CSVDataSource {
+	return &CSVDataSource{
+		filePath: filePath,
+		mapper:   mapper,
+	}
+}
+
+func (c *CSVDataSource) Read() ([]map[string]interface{}, error) {
+	file, err := os.Open(c.filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.Comma = ';'
+	headers, err := reader.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []map[string]interface{}
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		row := make(map[string]interface{})
+		for i, value := range record {
+			csvHeader := headers[i]
+			if fhirField, ok := c.mapper.csvToFHIR[csvHeader]; ok {
+				row[fhirField] = value
+			} else {
+				row[csvHeader] = value
+			}
+		}
+
+		log.Debug().Msgf("Populated row: %v", row)
+
+		// Voeg field_name toe
+		row["field_name"] = c.mapper.fieldName
+
+		result = append(result, row)
+	}
+
+	return result, nil
+}
+
+// Functie om een nieuwe ColumnMapper te maken
+func NewColumnMapper(csvToFHIR map[string]string, fieldName string) ColumnMapper {
+	return ColumnMapper{
+		csvToFHIR: csvToFHIR,
+		fieldName: fieldName,
+	}
+}
+
+func ExtractAndMapData(ds DataSource, s interface{}) error {
+	data, err := ds.Read()
+	if err != nil {
+		return err
+	}
+
+	resultMap := make(map[string]map[string][]map[string]interface{})
+	for _, row := range data {
+		fieldName := row["field_name"].(string)
+		parentID := ""
+		if pid, ok := row["parent_id"]; ok {
+			parentID = fmt.Sprintf("%v", pid)
+		}
 
 		if _, ok := resultMap[fieldName]; !ok {
-			resultMap[fieldName] = make(map[string][]RowData)
+			resultMap[fieldName] = make(map[string][]map[string]interface{})
 		}
-		resultMap[fieldName][parentID] = append(resultMap[fieldName][parentID], rowData)
+		resultMap[fieldName][parentID] = append(resultMap[fieldName][parentID], row)
 	}
 
 	v := reflect.ValueOf(s).Elem()
 	return populateStruct(v, resultMap, "")
 }
 
-func populateStruct(v reflect.Value, resultMap map[string]map[string][]RowData, parentField string) error {
+func populateStruct(v reflect.Value, resultMap map[string]map[string][]map[string]interface{}, parentField string) error {
 	if v.Kind() != reflect.Struct {
 		return fmt.Errorf("value is not a struct")
 	}
@@ -148,7 +272,7 @@ func populateStruct(v reflect.Value, resultMap map[string]map[string][]RowData, 
 	return nil
 }
 
-func fieldExistsInResultMap(resultMap map[string]map[string][]RowData, fieldName string) bool {
+func fieldExistsInResultMap(resultMap map[string]map[string][]map[string]interface{}, fieldName string) bool {
 	// Check if the field itself exists
 	if _, ok := resultMap[fieldName]; ok {
 		// log.Debug().Msgf("Field exists in resultMap: %s", fieldName)
@@ -165,7 +289,7 @@ func fieldExistsInResultMap(resultMap map[string]map[string][]RowData, fieldName
 	return false
 }
 
-func populateField(field reflect.Value, resultMap map[string]map[string][]RowData, fieldName string, parentID string) error {
+func populateField(field reflect.Value, resultMap map[string]map[string][]map[string]interface{}, fieldName string, parentID string) error {
 	log.Debug().Msgf("Populating field %s in populateField: %s and parentID", fieldName, parentID)
 	switch field.Kind() {
 	case reflect.Slice:
@@ -182,7 +306,7 @@ func populateField(field reflect.Value, resultMap map[string]map[string][]RowDat
 	}
 }
 
-func populateBasicType(field reflect.Value, resultMap map[string]map[string][]RowData, fullFieldName string) error {
+func populateBasicType(field reflect.Value, resultMap map[string]map[string][]map[string]interface{}, fullFieldName string) error {
 	log.Debug().Msgf("Populating basic type fullFieldName: %s", fullFieldName)
 
 	data, ok := resultMap[fullFieldName]
@@ -206,7 +330,7 @@ func populateBasicType(field reflect.Value, resultMap map[string]map[string][]Ro
 	return nil
 }
 
-func populateSlice(field reflect.Value, resultMap map[string]map[string][]RowData, fieldName string, parentID string) error {
+func populateSlice(field reflect.Value, resultMap map[string]map[string][]map[string]interface{}, fieldName string, parentID string) error {
 	log.Debug().Msgf("Populating slice field: %s with parentID: %s", fieldName, parentID)
 	if data, ok := resultMap[fieldName]; ok {
 		rows, exists := data[parentID]
@@ -251,7 +375,7 @@ func populateSlice(field reflect.Value, resultMap map[string]map[string][]RowDat
 	}
 	return nil
 }
-func populateStructFromRow(obj interface{}, row RowData) error {
+func populateStructFromRow(obj interface{}, row map[string]interface{}) error {
 	v := reflect.ValueOf(obj).Elem()
 	t := v.Type()
 
@@ -272,6 +396,7 @@ func populateStructFromRow(obj interface{}, row RowData) error {
 }
 
 func SetField(obj interface{}, name string, value interface{}) error {
+
 	structValue := reflect.ValueOf(obj)
 	if structValue.Kind() != reflect.Ptr || structValue.IsNil() {
 		return fmt.Errorf("obj must be a non-nil pointer to a struct")
@@ -289,6 +414,11 @@ func SetField(obj interface{}, name string, value interface{}) error {
 
 	if !field.CanSet() {
 		return fmt.Errorf("cannot set field %s", name)
+	}
+
+	if value == nil {
+		field.Set(reflect.Zero(field.Type()))
+		return nil
 	}
 
 	// Check if the field is a pointer to a type that implements UnmarshalJSON

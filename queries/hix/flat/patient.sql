@@ -45,10 +45,9 @@ SELECT
     cp.system,
     cp.value
 FROM
-    patient p
-    JOIN contacts c ON c.patient_id = p.identificatienummer
+    contacts c
     JOIN contact_points cp ON c.id = cp.contact_id
 WHERE 1=1
- AND p.identificatienummer = '123'
+ AND c.patient_id = '123'
 GROUP BY
-    p.identificatienummer, cp.system, cp.value, c.id;
+     cp.system, cp.value, c.id;
