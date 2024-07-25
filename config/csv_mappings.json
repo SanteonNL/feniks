@@ -35,6 +35,39 @@
             ]
           }
         ]
+      },
+      {
+        "fieldName": "Patient.Contact",
+        "files": [
+          {
+            "fileName": "test/data/sim/patient.csv",
+            "fieldMappings": [
+              {
+                "csvFields": {
+                },
+                "idField": "GerelateerdPersoonID",
+                "parentIdField": "Identificatienummer"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "fieldName": "Patient.Contact.Name",
+        "files": [
+          {
+            "fileName": "test/data/sim/patient.csv",
+            "fieldMappings": [
+              {
+                "csvFields": {
+                  "GerelateerdeRelatie": "family"
+                },
+                "idField": "GerelateerdPersoonID",
+                "parentIdField": "GerelateerdPersoonID"
+              }
+            ]
+          }
+        ]
       }
     ]
   }
