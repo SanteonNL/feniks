@@ -26,28 +26,51 @@ type SearchParameter struct {
 }
 
 type DataSource interface {
-	Read() ([]map[string]interface{}, error)
+	Read() (map[string][]map[string]interface{}, error)
 }
 
 type SQLDataSource struct {
 	db    *sqlx.DB
 	query string
 }
-type FieldMapping struct {
-	FHIRField     string
-	FieldName     string
-	IDField       string
-	ParentIDField string
+
+type Mapping struct {
+	FieldName string
+	Files     []FileMapping
 }
 
-type ColumnMapper struct {
-	csvToFHIR        map[string]FieldMapping
-	defaultFieldName string
+type FileMapping struct {
+	FileName      string
+	FieldMappings []FieldMapping
+}
+
+type FieldMapping struct {
+	FHIRField     map[string]string
+	ParentIDField string
+	IDField       string
 }
 
 type CSVDataSource struct {
 	filePath string
-	mapper   ColumnMapper
+	mapper   *Mapper
+}
+
+type Mapper struct {
+	Mappings []Mapping
+}
+
+type MapperConfig struct {
+	Mappings []struct {
+		FieldName string `json:"fieldName"`
+		Files     []struct {
+			FileName      string `json:"fileName"`
+			FieldMappings []struct {
+				CSVFields     map[string]string `json:"csvFields"`
+				IDField       string            `json:"idField"`
+				ParentIDField string            `json:"parentIdField"`
+			} `json:"fieldMappings"`
+		} `json:"files"`
+	} `json:"mappings"`
 }
 
 func main() {
@@ -72,20 +95,17 @@ func main() {
 
 	SQLDataSource := NewSQLDataSource(db, query)
 
-	csvToFHIR := map[string]FieldMapping{
-		"Identificatienummer": {FHIRField: "id", FieldName: "Patient", IDField: "Identificatienummer", ParentIDField: ""},
-		"Geboortedatum":       {FHIRField: "birthDate", FieldName: "Patient", IDField: "Identificatienummer", ParentIDField: ""},
-		"Voornaam":            {FHIRField: "text", FieldName: "Patient.Name", IDField: "Identificatienummer", ParentIDField: "Identificatienummer"},
-		"Achternaam":          {FHIRField: "family", FieldName: "Patient.Name", IDField: "Identificatienummer", ParentIDField: "Identificatienummer"},
-		"GeslachtCode":        {FHIRField: "gender", FieldName: "Patient", IDField: "Identificatienummer", ParentIDField: ""},
+	mapperPath := util.GetAbsolutePath("config/csv_mappings.json")
+	mapper, err := LoadMapperFromJSON(mapperPath)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load mapper configuration")
 	}
 
-	csvMapper := NewColumnMapper(csvToFHIR, "Patient")
-	csvDataSource := NewCSVDataSource("test/data/sim/patient.csv", csvMapper)
+	csvDataSource := NewCSVDataSource("test/data/sim/patient.csv", mapper)
 
-	// Kies welke DataSource je wilt gebruiken
+	// Choose which DataSource to use
 	var dataSource DataSource
-	useCSV := true // Zet dit op false om SQL te gebruiken
+	useCSV := true // Set this to false to use SQL
 	if useCSV {
 		dataSource = csvDataSource
 	} else {
@@ -121,14 +141,14 @@ func NewSQLDataSource(db *sqlx.DB, query string) *SQLDataSource {
 	}
 }
 
-func (s *SQLDataSource) Read() ([]map[string]interface{}, error) {
+func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
 	rows, err := s.db.Queryx(s.query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var result []map[string]interface{}
+	result := make(map[string][]map[string]interface{})
 	for rows.Next() {
 		row := make(map[string]interface{})
 		err = rows.MapScan(row)
@@ -136,28 +156,44 @@ func (s *SQLDataSource) Read() ([]map[string]interface{}, error) {
 			return nil, err
 		}
 
-		// Verwijder NULL waarden
+		// Remove NULL values
 		for key, value := range row {
 			if value == nil {
 				delete(row, key)
 			}
 		}
 
-		result = append(result, row)
+		result["Patient"] = append(result["Patient"], row)
 	}
 
 	return result, nil
 }
 
-func NewCSVDataSource(filePath string, mapper ColumnMapper) *CSVDataSource {
+func NewCSVDataSource(filePath string, mapper *Mapper) *CSVDataSource {
 	return &CSVDataSource{
 		filePath: filePath,
 		mapper:   mapper,
 	}
 }
 
-func (c *CSVDataSource) Read() ([]map[string]interface{}, error) {
-	file, err := os.Open(c.filePath)
+func (c *CSVDataSource) Read() (map[string][]map[string]interface{}, error) {
+	result := make(map[string][]map[string]interface{})
+
+	for _, mapping := range c.mapper.Mappings {
+		for _, fileMapping := range mapping.Files {
+			fileData, err := c.readFile(fileMapping)
+			if err != nil {
+				return nil, err
+			}
+			result[mapping.FieldName] = append(result[mapping.FieldName], fileData...)
+		}
+	}
+
+	return result, nil
+}
+
+func (c *CSVDataSource) readFile(fileMapping FileMapping) ([]map[string]interface{}, error) {
+	file, err := os.Open(fileMapping.FileName)
 	if err != nil {
 		return nil, err
 	}
@@ -183,34 +219,25 @@ func (c *CSVDataSource) Read() ([]map[string]interface{}, error) {
 
 		row := make(map[string]interface{})
 		for i, header := range headers {
-			if mapping, ok := c.mapper.csvToFHIR[header]; ok {
-				if record[i] != "" {
-					row[mapping.FieldName] = record[i]
+			for _, fieldMapping := range fileMapping.FieldMappings {
+				if fhirField, ok := fieldMapping.FHIRField[header]; ok {
+					if record[i] != "" {
+						row[fhirField] = record[i]
+					}
+				}
+				if header == fieldMapping.ParentIDField {
+					row["parent_id"] = record[i]
+				}
+				if header == fieldMapping.IDField {
+					row["id"] = record[i]
 				}
 			}
 		}
+
 		result = append(result, row)
 	}
 
 	return result, nil
-}
-
-// Helper function to get the index of a column in the headers
-func getColumnIndex(headers []string, column string) int {
-	for i, header := range headers {
-		if header == column {
-			return i
-		}
-	}
-	return -1 // Return -1 if the column is not found
-}
-
-// Functie om een nieuwe ColumnMapper te maken
-func NewColumnMapper(csvToFHIR map[string]FieldMapping, defaultFieldName string) ColumnMapper {
-	return ColumnMapper{
-		csvToFHIR:        csvToFHIR,
-		defaultFieldName: defaultFieldName,
-	}
 }
 
 func ExtractAndMapData(ds DataSource, s interface{}) error {
@@ -219,26 +246,11 @@ func ExtractAndMapData(ds DataSource, s interface{}) error {
 		return err
 	}
 
-	resultMap := make(map[string]map[string][]map[string]interface{})
-	for _, row := range data {
-		log.Debug().Msgf("Row: %v", row)
-		fieldName := row["field_name"].(string)
-		parentID := ""
-		if pid, ok := row["parent_id"]; ok {
-			parentID = fmt.Sprintf("%v", pid)
-		}
-
-		if _, ok := resultMap[fieldName]; !ok {
-			resultMap[fieldName] = make(map[string][]map[string]interface{})
-		}
-		resultMap[fieldName][parentID] = append(resultMap[fieldName][parentID], row)
-	}
-
 	v := reflect.ValueOf(s).Elem()
-	return populateStruct(v, resultMap, "")
+	return populateStruct(v, data, "")
 }
 
-func populateStruct(v reflect.Value, resultMap map[string]map[string][]map[string]interface{}, parentField string) error {
+func populateStruct(v reflect.Value, resultMap map[string][]map[string]interface{}, parentField string) error {
 	if v.Kind() != reflect.Struct {
 		return fmt.Errorf("value is not a struct")
 	}
@@ -250,14 +262,11 @@ func populateStruct(v reflect.Value, resultMap map[string]map[string][]map[strin
 		fullFieldName = structName
 	}
 
-	// Check if there's data for this struct
 	if data, ok := resultMap[fullFieldName]; ok {
-		for _, rows := range data {
-			for _, row := range rows {
-				err := populateStructFromRow(v.Addr().Interface(), row)
-				if err != nil {
-					return err
-				}
+		for _, row := range data {
+			err := populateStructFromRow(v.Addr().Interface(), row)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -285,14 +294,11 @@ func populateStruct(v reflect.Value, resultMap map[string]map[string][]map[strin
 	return nil
 }
 
-func fieldExistsInResultMap(resultMap map[string]map[string][]map[string]interface{}, fieldName string) bool {
-	// Check if the field itself exists
+func fieldExistsInResultMap(resultMap map[string][]map[string]interface{}, fieldName string) bool {
 	if _, ok := resultMap[fieldName]; ok {
-		// log.Debug().Msgf("Field exists in resultMap: %s", fieldName)
 		return true
 	}
 
-	// Check if any nested fields exist
 	for key := range resultMap {
 		if strings.HasPrefix(key, fieldName+".") {
 			log.Debug().Msgf("Nested field exists in resultMap: %s", key)
@@ -302,7 +308,7 @@ func fieldExistsInResultMap(resultMap map[string]map[string][]map[string]interfa
 	return false
 }
 
-func populateField(field reflect.Value, resultMap map[string]map[string][]map[string]interface{}, fieldName string, parentID string) error {
+func populateField(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string) error {
 	log.Debug().Msgf("Populating field %s in populateField: %s and parentID", fieldName, parentID)
 	switch field.Kind() {
 	case reflect.Slice:
@@ -319,75 +325,68 @@ func populateField(field reflect.Value, resultMap map[string]map[string][]map[st
 	}
 }
 
-func populateBasicType(field reflect.Value, resultMap map[string]map[string][]map[string]interface{}, fullFieldName string) error {
+func populateBasicType(field reflect.Value, resultMap map[string][]map[string]interface{}, fullFieldName string) error {
 	log.Debug().Msgf("Populating basic type fullFieldName: %s", fullFieldName)
 
 	data, ok := resultMap[fullFieldName]
 	if !ok {
-		return nil // No data for this field, skip it
+		return nil
 	}
 
 	fieldName := strings.Split(fullFieldName, ".")[len(strings.Split(fullFieldName, "."))-1]
 	log.Debug().Msgf("Populating basic type fieldName: %s", fieldName)
 
-	for _, rows := range data {
-		for _, row := range rows {
-			for key, value := range row {
-				if strings.EqualFold(key, fieldName) {
-					log.Debug().Msgf("Setting field: %s with value: %v", fieldName, value)
-					return SetField(field.Addr().Interface(), fieldName, value)
-				}
+	for _, row := range data {
+		for key, value := range row {
+			if strings.EqualFold(key, fieldName) {
+				log.Debug().Msgf("Setting field: %s with value: %v", fieldName, value)
+				return SetField(field.Addr().Interface(), fieldName, value)
 			}
 		}
 	}
 	return nil
 }
 
-func populateSlice(field reflect.Value, resultMap map[string]map[string][]map[string]interface{}, fieldName string, parentID string) error {
+func populateSlice(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string) error {
 	log.Debug().Msgf("Populating slice field: %s with parentID: %s", fieldName, parentID)
 	if data, ok := resultMap[fieldName]; ok {
-		rows, exists := data[parentID]
-		if !exists {
-			log.Debug().Msgf("No rows found for parentID: %s in field: %s", parentID, fieldName)
-			return nil
-		}
-
-		for _, row := range rows {
-			newElem := reflect.New(field.Type().Elem()).Elem()
-			err := populateStructFromRow(newElem.Addr().Interface(), row)
-			if err != nil {
-				return err
-			}
-
-			// Get the ID of the new element
-			newElemID := ""
-			if idField := newElem.FieldByName("Id"); idField.IsValid() && idField.Kind() == reflect.Ptr && idField.Type().Elem().Kind() == reflect.String {
-				if idField.Elem().IsValid() {
-					newElemID = idField.Elem().String()
+		for _, row := range data {
+			if row["parent_id"] == parentID || parentID == "" {
+				newElem := reflect.New(field.Type().Elem()).Elem()
+				err := populateStructFromRow(newElem.Addr().Interface(), row)
+				if err != nil {
+					return err
 				}
-			}
 
-			// Recursively populate nested fields
-			for i := 0; i < newElem.NumField(); i++ {
-				nestedField := newElem.Field(i)
-				nestedFieldName := newElem.Type().Field(i).Name
-				nestedFullFieldName := fieldName + "." + nestedFieldName
-
-				if fieldExistsInResultMap(resultMap, nestedFullFieldName) {
-					err := populateField(nestedField, resultMap, nestedFullFieldName, newElemID)
-					if err != nil {
-						return err
+				newElemID := ""
+				if idField := newElem.FieldByName("Id"); idField.IsValid() && idField.Kind() == reflect.Ptr && idField.Type().Elem().Kind() == reflect.String {
+					if idField.Elem().IsValid() {
+						newElemID = idField.Elem().String()
 					}
 				}
-			}
 
-			field.Set(reflect.Append(field, newElem))
+				for i := 0; i < newElem.NumField(); i++ {
+					nestedField := newElem.Field(i)
+					nestedFieldName := newElem.Type().Field(i).Name
+					nestedFullFieldName := fieldName + "." + nestedFieldName
+
+					if fieldExistsInResultMap(resultMap, nestedFullFieldName) {
+						err := populateField(nestedField, resultMap, nestedFullFieldName, newElemID)
+						if err != nil {
+							return err
+						}
+					}
+				}
+
+				field.Set(reflect.Append(field, newElem))
+			}
 		}
 	} else {
 		log.Debug().Msgf("No data found for field: %s", fieldName)
 	}
 	return nil
 }
+
 func populateStructFromRow(obj interface{}, row map[string]interface{}) error {
 	v := reflect.ValueOf(obj).Elem()
 	t := v.Type()
@@ -508,4 +507,50 @@ func SetField(obj interface{}, name string, value interface{}) error {
 	}
 
 	return nil
+}
+
+func LoadMapperFromJSON(filePath string) (*Mapper, error) {
+	jsonFile, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var config MapperConfig
+	err = json.Unmarshal(jsonFile, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	mapper := &Mapper{
+		Mappings: make([]Mapping, len(config.Mappings)),
+	}
+
+	for i, configMapping := range config.Mappings {
+		mapping := Mapping{
+			FieldName: configMapping.FieldName,
+			Files:     make([]FileMapping, len(configMapping.Files)),
+		}
+
+		for j, configFile := range configMapping.Files {
+			fileMapping := FileMapping{
+				FileName:      configFile.FileName,
+				FieldMappings: make([]FieldMapping, len(configFile.FieldMappings)),
+			}
+
+			for k, configFieldMapping := range configFile.FieldMappings {
+				fieldMapping := FieldMapping{
+					FHIRField:     configFieldMapping.CSVFields,
+					IDField:       configFieldMapping.IDField,
+					ParentIDField: configFieldMapping.ParentIDField,
+				}
+				fileMapping.FieldMappings[k] = fieldMapping
+			}
+
+			mapping.Files[j] = fileMapping
+		}
+
+		mapper.Mappings[i] = mapping
+	}
+
+	return mapper, nil
 }
