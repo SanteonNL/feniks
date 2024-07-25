@@ -56,14 +56,14 @@
         "fieldName": "Patient.Contact.Name",
         "files": [
           {
-            "fileName": "test/data/sim/patient.csv",
+            "fileName": "test/data/sim/patient_contacts.csv",
             "fieldMappings": [
               {
                 "csvFields": {
                   "GerelateerdeRelatie": "family"
                 },
                 "idField": "GerelateerdPersoonID",
-                "parentIdField": "GerelateerdPersoonID"
+                "parentIdField": "Identificatienummer"
               }
             ]
           }
