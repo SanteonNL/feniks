@@ -105,7 +105,7 @@ func main() {
 
 	// Choose which DataSource to use
 	var dataSource DataSource
-	useCSV := true // Set this to false to use SQL
+	useCSV := false // Set this to false to use SQL
 	if useCSV {
 		dataSource = csvDataSource
 	} else {
@@ -163,7 +163,13 @@ func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
 			}
 		}
 
-		result["Patient"] = append(result["Patient"], row)
+		fieldName, ok := row["field_name"].(string)
+		if !ok {
+			return nil, fmt.Errorf("field_name not found or not a string")
+		}
+
+		delete(row, "field_name")
+		result[fieldName] = append(result[fieldName], row)
 	}
 
 	return result, nil
