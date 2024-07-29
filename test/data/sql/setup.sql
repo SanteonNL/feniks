@@ -29,39 +29,37 @@ CREATE TABLE public.names (
     identificatienummer character varying(13),
     firstname character varying(255),
     lastname character varying(255),
-    name_use character varying(255)
+    name_use character varying(255),
+    period_start date,
+    period_end date
 );
 
-INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
-VALUES ('123', 'John', 'Doe', 'Official');
+INSERT INTO public.names (identificatienummer, firstname, lastname, name_use, period_start, period_end)
+VALUES ('123', 'John', 'Doe', 'Official', '2022-01-01', '2022-12-31');
 
-INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
-VALUES ('123', '', 'Smith', 'Alternate');
+INSERT INTO public.names (identificatienummer, firstname, lastname, name_use, period_start, period_end)
+VALUES ('987', 'Alice', 'Johnson', 'Official', '2022-01-01', '2022-12-31');
 
-INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
-VALUES ('987', 'Alice', 'Johnson', 'Official');
+INSERT INTO public.names (identificatienummer, firstname, lastname, name_use, period_start, period_end)
+VALUES ('987', 'Bob', 'Williams', 'Alternate', '2022-01-01', '2022-12-31');
 
-INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
-VALUES ('987', 'Bob', 'Williams', 'Alternate');
+INSERT INTO public.names (identificatienummer, firstname, lastname, name_use, period_start, period_end)
+VALUES ('456', 'Michael', 'Brown', 'Official', '2022-01-01', '2022-12-31');
 
-INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
-VALUES ('456', 'Michael', 'Brown', 'Official');
+INSERT INTO public.names (identificatienummer, firstname, lastname, name_use, period_start, period_end)
+VALUES ('456', 'Emily', 'Davis', 'Alternate', '2022-01-01', '2022-12-31');
 
-INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
-VALUES ('456', 'Emily', 'Davis', 'Alternate');
+INSERT INTO public.names (identificatienummer, firstname, lastname, name_use, period_start, period_end)
+VALUES ('789', 'David', 'Miller', 'Official', '2022-01-01', '2022-12-31');
 
-INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
-VALUES ('789', 'David', 'Miller', 'Official');
+INSERT INTO public.names (identificatienummer, firstname, lastname, name_use, period_start, period_end)
+VALUES ('P002', 'Olivia', 'Wilson', 'Alternate', '2022-01-01', '2022-12-31');
 
-INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
-VALUES ('P002', 'Olivia', 'Wilson', 'Alternate');
+INSERT INTO public.names (identificatienummer, firstname, lastname, name_use, period_start, period_end)
+VALUES ('P001', 'Daniel', 'Anderson', 'Official', '2022-01-01', '2022-12-31');
 
-INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
-VALUES ('P001', 'Daniel', 'Anderson', 'Official');
-
-INSERT INTO public.names (identificatienummer, firstname, lastname, name_use)
-VALUES ('P001', 'Sophia', 'Taylor', 'Alternate');
-
+INSERT INTO public.names (identificatienummer, firstname, lastname, name_use, period_start, period_end)
+VALUES ('P001', 'Sophia', 'Taylor', 'Alternate', '2022-01-01', '2022-12-31');
 CREATE TABLE public.practitioner (
     practitioner_id character varying(20),
     practitioner_name character varying(255)

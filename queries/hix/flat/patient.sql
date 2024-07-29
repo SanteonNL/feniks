@@ -13,19 +13,46 @@ WHERE 1=1
  AND p.identificatienummer = '123';
 
 
+WITH cte AS (
+    SELECT
+        'Patient.Name' as field_name,
+        p.identificatienummer as parent_id,
+        concat(p.identificatienummer,humanName.lastname) AS id,
+        humanName.lastname as family,
+        humanName.firstname AS name
+    FROM
+        patient p
+        JOIN names humanName ON humanName.identificatienummer = p.identificatienummer
+    WHERE 1=1
+     AND p.identificatienummer = '123'   
+    GROUP BY
+        p.identificatienummer, humanName.lastname,humanName.firstname
+)
 SELECT
-    'Patient.Name' as field_name,
-    p.identificatienummer as parent_id,
-    concat(p.identificatienummer,humanName.lastname) AS id,
-    humanName.lastname as family,
-    humanName.firstname AS name
+        'Patient.Name' as field_name,
+        cte.parent_id,
+        concat(p.identificatienummer,humanName.lastname) AS id,
+        humanName.lastname as family,
+        humanName.firstname AS name
+FROM cte
+
+
+
+
+
+SELECT
+    'Patient.Contact.Telecom' AS field_name,
+    c.id AS parent_id,
+    CONCAT(c.id, cp.system) AS id,
+    cp.system,
+    cp.value
 FROM
-    patient p
-    JOIN names humanName ON humanName.identificatienummer = p.identificatienummer
+    contacts c
+    JOIN contact_points cp ON c.id = cp.contact_id
 WHERE 1=1
- AND p.identificatienummer = '123'   
+ AND c.patient_id = '123'
 GROUP BY
-    p.identificatienummer, humanName.lastname,humanName.firstname;
+     cp.system, cp.value, c.id;
 
 
 SELECT
