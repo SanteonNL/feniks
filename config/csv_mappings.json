@@ -68,6 +68,23 @@
             ]
           }
         ]
+      },
+      {
+        "fieldName": "Patient.Contact.Relationship",
+        "files": [
+          {
+            "fileName": "test/data/sim/patient.csv",
+            "fieldMappings": [
+              {
+                "csvFields": {
+                  "GerelateerdeRelatie": "family"
+                },
+                "idField": "GerelateerdPersoonID",
+                "parentIdField": "Identificatienummer"
+              }
+            ]
+          }
+        ]
       }
     ]
   }

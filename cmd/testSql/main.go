@@ -23,7 +23,7 @@ type Endpoints struct {
 	SQLFile      string     `json:"sqlFile"`
 	Endpoint     []Endpoint `json:"endpoint"`
 }
-type SearchParameter struct {
+type SearchFilter struct {
 	Code       string   `json:"code"`
 	Modifier   []string `json:"modifier,omitempty"`
 	Comparator string   `json:"comparator,omitempty"`
@@ -31,8 +31,8 @@ type SearchParameter struct {
 	Type       string   `json:"type,omitempty"`
 }
 type Endpoint struct {
-	SearchParameter []SearchParameter `json:"searchParameter"`
-	SQLFile         string            `json:"sqlFile"`
+	SearchParameter []SearchFilter `json:"searchParameter"`
+	SQLFile         string         `json:"sqlFile"`
 }
 
 func main() {
@@ -48,7 +48,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 	log.Println("GetAllPatients called")
 
 	queryParams := r.URL.Query()
-	searchParams := make([]SearchParameter, 0)
+	searchParams := make([]SearchFilter, 0)
 
 	searchParamsMap := map[string]string{
 		"family":    "string",
@@ -60,7 +60,7 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 		for _, value := range values {
 			typeValue := searchParamsMap[key]
 			comparator, paramValue := parseComparator(value, typeValue)
-			param := SearchParameter{
+			param := SearchFilter{
 				Code:       key,
 				Value:      paramValue,
 				Type:       typeValue,
@@ -143,10 +143,10 @@ func GetAllPatients(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func matchesFilters(patient fhir.Patient, filters []SearchParameter) bool {
+func matchesFilters(patient fhir.Patient, filters []SearchFilter) bool {
 	return checkFields(reflect.ValueOf(&patient).Elem(), filters, "Patient")
 }
-func checkFields(v reflect.Value, filters []SearchParameter, parentField string) bool {
+func checkFields(v reflect.Value, filters []SearchFilter, parentField string) bool {
 	if v.Kind() != reflect.Struct {
 		log.Println("Warning: Value is not a struct")
 		return false
@@ -168,7 +168,7 @@ func checkFields(v reflect.Value, filters []SearchParameter, parentField string)
 	return false
 }
 
-func processField(field reflect.Value, filters []SearchParameter, fieldName string) bool {
+func processField(field reflect.Value, filters []SearchFilter, fieldName string) bool {
 	switch field.Kind() {
 	case reflect.Slice:
 		return processSlice(field, filters, fieldName)
@@ -184,7 +184,7 @@ func processField(field reflect.Value, filters []SearchParameter, fieldName stri
 	return false
 }
 
-func processSlice(field reflect.Value, filters []SearchParameter, fieldName string) bool {
+func processSlice(field reflect.Value, filters []SearchFilter, fieldName string) bool {
 	for i := 0; i < field.Len(); i++ {
 		element := field.Index(i)
 		log.Printf("Checking element %d of slice %s", i, fieldName)
@@ -195,7 +195,7 @@ func processSlice(field reflect.Value, filters []SearchParameter, fieldName stri
 	return false
 }
 
-func compareBasicType(field reflect.Value, filters []SearchParameter) bool {
+func compareBasicType(field reflect.Value, filters []SearchFilter) bool {
 	for _, filter := range filters {
 		if compare(field, filter) {
 			log.Printf("Match found for field value: %v", field.Interface())
@@ -205,7 +205,7 @@ func compareBasicType(field reflect.Value, filters []SearchParameter) bool {
 	return false
 }
 
-func compare(field reflect.Value, filter SearchParameter) bool {
+func compare(field reflect.Value, filter SearchFilter) bool {
 	switch field.Kind() {
 	case reflect.String:
 		return compareString(field.String(), filter)
@@ -228,7 +228,7 @@ func compare(field reflect.Value, filter SearchParameter) bool {
 	return false
 }
 
-func compareString(value string, filter SearchParameter) bool {
+func compareString(value string, filter SearchFilter) bool {
 	switch filter.Comparator {
 	case "eq":
 		return strings.EqualFold(value, filter.Value)
@@ -239,7 +239,7 @@ func compareString(value string, filter SearchParameter) bool {
 	}
 }
 
-func compareInt(value int64, filter SearchParameter) bool {
+func compareInt(value int64, filter SearchFilter) bool {
 	filterValue, err := strconv.ParseInt(filter.Value, 10, 64)
 	if err != nil {
 		log.Printf("Error parsing int filter value: %v", err)
@@ -258,7 +258,7 @@ func compareInt(value int64, filter SearchParameter) bool {
 	return false
 }
 
-func compareUint(value uint64, filter SearchParameter) bool {
+func compareUint(value uint64, filter SearchFilter) bool {
 	filterValue, err := strconv.ParseUint(filter.Value, 10, 64)
 	if err != nil {
 		log.Printf("Error parsing uint filter value: %v", err)
@@ -277,7 +277,7 @@ func compareUint(value uint64, filter SearchParameter) bool {
 	return false
 }
 
-func compareFloat(value float64, filter SearchParameter) bool {
+func compareFloat(value float64, filter SearchFilter) bool {
 	filterValue, err := strconv.ParseFloat(filter.Value, 64)
 	if err != nil {
 		log.Printf("Error parsing float filter value: %v", err)
@@ -296,7 +296,7 @@ func compareFloat(value float64, filter SearchParameter) bool {
 	return false
 }
 
-func compareBool(value bool, filter SearchParameter) bool {
+func compareBool(value bool, filter SearchFilter) bool {
 	filterValue, err := strconv.ParseBool(filter.Value)
 	if err != nil {
 		log.Printf("Error parsing bool filter value: %v", err)
@@ -306,7 +306,7 @@ func compareBool(value bool, filter SearchParameter) bool {
 	return value == filterValue
 }
 
-func compareTime(value time.Time, filter SearchParameter) bool {
+func compareTime(value time.Time, filter SearchFilter) bool {
 	filterValue, err := time.Parse(time.RFC3339, filter.Value)
 	if err != nil {
 		log.Printf("Error parsing time filter value: %v", err)
@@ -353,7 +353,7 @@ func parseComparator(input string, valueType string) (comparator string, paramVa
 	return "", input
 }
 
-func compareSlice(value interface{}, filter SearchParameter) bool {
+func compareSlice(value interface{}, filter SearchFilter) bool {
 	sliceValue := value.([]string)
 	filterStrValue := filter.Value
 	for _, strValue := range sliceValue {

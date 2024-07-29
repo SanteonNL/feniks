@@ -1,2 +1,2 @@
-Identificatienummer;GerelateerdPersoonID;GerelateerdeRelatie;GeslachtCode;GeslachtOmschrijving;Land;Geboortedatum;DatumOverlijden;DatumCheckStatusOverlijden;Voornaam;Achternaam
-csv456;motherid123;AchternaamNaamVanMijnMoeder;female;Female;NL;2021-09-30;;;Tommy;Hetterscheid
+Identificatienummer ;GerelateerdPersoonID ;GerelateerdeRelatieSysteem ;GerelateerdeRelatie         ;GeslachtCode ;GeslachtOmschrijving ;Land ;Geboortedatum ;DatumOverlijden ;DatumCheckStatusOverlijden ;Voornaam ;Achternaam
+csv456              ;motherid123          ;Santeon                           ;MTH ;female       ;Female               ;NL   ;2021-09-30    ;                ;                           ;Tommy    ;Hetterscheid
