@@ -76,20 +76,20 @@ type MapperConfig struct {
 func main() {
 	startTime := time.Now()
 
-	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) { w.Out = os.Stdout })).With().Timestamp().Caller().Logger()
+	l := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) { w.Out = os.Stdout })).With().Timestamp().Caller().Logger()
 
-	log.Debug().Msg("Starting flatSqlToJson")
+	l.Debug().Msg("Starting flatSqlToJson")
 
 	db, err := sqlx.Connect("postgres", "postgres://postgres:mysecretpassword@localhost:5432/tsl_employee?sslmode=disable")
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to the database")
+		l.Fatal().Err(err).Msg("Failed to connect to the database")
 	}
 
-	queryPath := util.GetAbsolutePath("queries/hix/flat/patient_union.sql")
+	queryPath := util.GetAbsolutePath("queries/hix/flat/patient.sql")
 
 	queryBytes, err := os.ReadFile(queryPath)
 	if err != nil {
-		log.Fatal().Msgf("Failed to read query file: %s", queryPath)
+		l.Fatal().Msgf("Failed to read query file: %s", queryPath)
 	}
 	query := string(queryBytes)
 
@@ -98,7 +98,7 @@ func main() {
 	mapperPath := util.GetAbsolutePath("config/csv_mappings.json")
 	mapper, err := LoadMapperFromJSON(mapperPath)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load mapper configuration")
+		l.Fatal().Err(err).Msg("Failed to load mapper configuration")
 	}
 
 	csvDataSource := NewCSVDataSource("test/data/sim/patient.csv", mapper)
@@ -114,15 +114,15 @@ func main() {
 
 	patient := fhir.Patient{}
 
-	err = ExtractAndMapData(dataSource, &patient)
+	err = ExtractAndMapData(dataSource, &patient, l)
 	if err != nil {
-		log.Fatal().Stack().Err(errors.WithStack(err)).Msg("Failed to populate struct")
+		l.Fatal().Stack().Err(errors.WithStack(err)).Msg("Failed to populate struct")
 		return
 	}
 
 	jsonData, err := json.MarshalIndent(patient, "", "  ")
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to marshal patient to JSON")
+		l.Fatal().Err(err).Msg("Failed to marshal patient to JSON")
 		return
 	}
 
@@ -131,7 +131,7 @@ func main() {
 
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
-	log.Debug().Msgf("Execution time: %s", duration)
+	l.Debug().Msgf("Execution time: %s", duration)
 }
 
 func NewSQLDataSource(db *sqlx.DB, query string) *SQLDataSource {
@@ -142,36 +142,59 @@ func NewSQLDataSource(db *sqlx.DB, query string) *SQLDataSource {
 }
 
 func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
+	result := make(map[string][]map[string]interface{})
+
 	rows, err := s.db.Queryx(s.query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error executing query: %w", err)
 	}
 	defer rows.Close()
 
-	result := make(map[string][]map[string]interface{})
-	for rows.Next() {
-		row := make(map[string]interface{})
-		err = rows.MapScan(row)
-		if err != nil {
-			return nil, err
-		}
+	resultSetCount := 0
+	for {
+		resultSetCount++
+		log.Debug().Int("resultSet", resultSetCount).Msg("Processing result set")
 
-		// Remove NULL values
-		for key, value := range row {
-			if value == nil {
-				delete(row, key)
+		rowCount := 0
+		for rows.Next() {
+			rowCount++
+			row := make(map[string]interface{})
+			err = rows.MapScan(row)
+			if err != nil {
+				return nil, fmt.Errorf("error scanning row: %w", err)
 			}
+
+			log.Debug().Int("resultSet", resultSetCount).Int("row", rowCount).Interface("row", row).Msg("Row from SQL query")
+
+			// Remove NULL values
+			for key, value := range row {
+				if value == nil {
+					delete(row, key)
+				}
+			}
+
+			fieldName, ok := row["field_name"].(string)
+			if !ok {
+				return nil, fmt.Errorf("field_name not found or not a string in result set %d, row %d", resultSetCount, rowCount)
+			}
+
+			delete(row, "field_name")
+			result[fieldName] = append(result[fieldName], row)
 		}
 
-		fieldName, ok := row["field_name"].(string)
-		if !ok {
-			return nil, fmt.Errorf("field_name not found or not a string")
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("error iterating over rows in result set %d: %w", resultSetCount, err)
 		}
 
-		delete(row, "field_name")
-		result[fieldName] = append(result[fieldName], row)
+		log.Debug().Int("resultSet", resultSetCount).Int("rowCount", rowCount).Msg("Finished processing result set")
+
+		// Move to the next result set
+		if !rows.NextResultSet() {
+			break // No more result sets
+		}
 	}
 
+	log.Debug().Int("resultSets", resultSetCount).Interface("result", result).Msg("Data from SQL query")
 	return result, nil
 }
 
@@ -246,11 +269,12 @@ func (c *CSVDataSource) readFile(fileMapping FileMapping) ([]map[string]interfac
 	return result, nil
 }
 
-func ExtractAndMapData(ds DataSource, s interface{}) error {
+func ExtractAndMapData(ds DataSource, s interface{}, logger zerolog.Logger) error {
 	data, err := ds.Read()
 	if err != nil {
 		return err
 	}
+	logger.Debug().Interface("rawData", data).Msgf("Data before mapping:\n%+v", data)
 
 	v := reflect.ValueOf(s).Elem()
 	return populateStruct(v, data, "")
@@ -288,12 +312,15 @@ func populateStruct(v reflect.Value, resultMap map[string][]map[string]interface
 		field := v.Field(i)
 		fieldName := v.Type().Field(i).Name
 		newFullFieldName := fullFieldName + "." + fieldName
-
+		log.Debug().Str("field", newFullFieldName).Msg("Processing field")
 		if fieldExistsInResultMap(resultMap, newFullFieldName) {
+			log.Debug().Str("field", newFullFieldName).Msg("Field exists in resultMap")
 			err := populateField(field, resultMap, newFullFieldName, structID)
 			if err != nil {
 				return err
 			}
+		} else {
+			log.Debug().Str("field", newFullFieldName).Msg("Field does not exist in resultMap")
 		}
 	}
 

@@ -7,19 +7,21 @@
     --     WHEN p.geslachtcode = 'F' THEN 'female'
     --     ELSE 'unknown'
     -- END as gender, 
+    'male' as gender,
     p.geboortedatum Birthdate
     FROM patient p
 WHERE 1=1
- AND p.identificatienummer = '123';
+AND p.identificatienummer = '123';
 
-
-WITH cte AS (
+WITH names AS (
     SELECT
         'Patient.Name' as field_name,
         p.identificatienummer as parent_id,
         concat(p.identificatienummer,humanName.lastname) AS id,
         humanName.lastname as family,
-        humanName.firstname AS name
+        humanName.firstname AS name,
+        null as start,
+        null as end
     FROM
         patient p
         JOIN names humanName ON humanName.identificatienummer = p.identificatienummer
@@ -27,17 +29,27 @@ WITH cte AS (
      AND p.identificatienummer = '123'   
     GROUP BY
         p.identificatienummer, humanName.lastname,humanName.firstname
-)
-SELECT
+) 
+SELECT * FROM names;
+
+WITH names AS (
+    SELECT
         'Patient.Name' as field_name,
-        cte.parent_id,
-        concat(p.identificatienummer,humanName.lastname) AS id,
+        p.identificatienummer as parent_id,
+        CONCAT(p.identificatienummer, humanName.lastname, humanName.period_start, ROW_NUMBER() OVER (ORDER BY p.identificatienummer, humanName.lastname, humanName.period_start)) AS id,
         humanName.lastname as family,
-        humanName.firstname AS name
-FROM cte
-
-
-
+        humanName.firstname AS name,
+        period_start as start,
+        period_end as ends
+    FROM
+        patient p
+        JOIN names humanName ON humanName.identificatienummer = p.identificatienummer
+    WHERE 1=1
+     AND p.identificatienummer = '123'   
+    GROUP BY
+        p.identificatienummer, humanName.lastname,humanName.firstname, humanName.period_start, humanName.period_end
+)  
+SELECT 'Patient.Name.Period' as field_name, id as parent_id, id, start, ends  FROM names;
 
 
 SELECT
@@ -53,7 +65,6 @@ WHERE 1=1
  AND c.patient_id = '123'
 GROUP BY
      cp.system, cp.value, c.id;
-
 
 SELECT
     'Patient.Contact' AS field_name,
