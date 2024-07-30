@@ -314,13 +314,13 @@ func populateStruct(v reflect.Value, resultMap map[string][]map[string]interface
 		newFullFieldName := fullFieldName + "." + fieldName
 		log.Debug().Str("field", newFullFieldName).Msg("Processing field")
 		if fieldExistsInResultMap(resultMap, newFullFieldName) {
-			log.Debug().Str("field", newFullFieldName).Msg("Field exists in resultMap")
+			//log.Debug().Str("field", newFullFieldName).Msg("Field exists in resultMap")
 			err := populateField(field, resultMap, newFullFieldName, structID)
 			if err != nil {
 				return err
 			}
 		} else {
-			log.Debug().Str("field", newFullFieldName).Msg("Field does not exist in resultMap")
+			//log.Debug().Str("field", newFullFieldName).Msg("Field does not exist in resultMap")
 		}
 	}
 
@@ -490,6 +490,16 @@ func SetField(obj interface{}, name string, value interface{}) error {
 
 	fieldValue := reflect.ValueOf(value)
 
+	// Handle conversion from []uint8 to []string if needed
+	if field.Type() == reflect.TypeOf([]string{}) && fieldValue.Type() == reflect.TypeOf([]uint8{}) {
+		var strSlice []string
+		if err := json.Unmarshal(value.([]uint8), &strSlice); err != nil {
+			return fmt.Errorf("failed to unmarshal []uint8 to []string: %v", err)
+		}
+		field.Set(reflect.ValueOf(strSlice))
+		return nil
+	}
+
 	if field.Kind() == reflect.Ptr && (field.Type().Elem().Kind() == reflect.String || field.Type().Elem().Kind() == reflect.Bool) {
 		var newValue reflect.Value
 
@@ -533,7 +543,7 @@ func SetField(obj interface{}, name string, value interface{}) error {
 		field.Set(newValue)
 	} else {
 		if field.Type() != fieldValue.Type() {
-			return fmt.Errorf("provided value type didn't match obj field type %s and %s ", field.Type(), fieldValue.Type())
+			return fmt.Errorf("provided value type didn't match obj field type %s for field %s and %s ", field.Type(), name, fieldValue.Type())
 		}
 
 		field.Set(fieldValue)

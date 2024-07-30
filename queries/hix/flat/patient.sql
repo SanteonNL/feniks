@@ -19,7 +19,7 @@ WITH names AS (
         p.identificatienummer as parent_id,
         concat(p.identificatienummer,humanName.lastname) AS id,
         humanName.lastname as family,
-        humanName.firstname AS name,
+        JSON_ARRAY(humanName.firstname, 'Tommy', 'Jantine') AS given,
         null as start,
         null as end
     FROM
@@ -40,7 +40,7 @@ WITH names AS (
         humanName.lastname as family,
         humanName.firstname AS name,
         period_start as start,
-        period_end as ends
+        period_end as endx
     FROM
         patient p
         JOIN names humanName ON humanName.identificatienummer = p.identificatienummer
@@ -49,7 +49,7 @@ WITH names AS (
     GROUP BY
         p.identificatienummer, humanName.lastname,humanName.firstname, humanName.period_start, humanName.period_end
 )  
-SELECT 'Patient.Name.Period' as field_name, id as parent_id, id, start, ends  FROM names;
+SELECT 'Patient.Name.Period' as field_name, id as parent_id, id, start, endx as end  FROM names;
 
 
 SELECT
