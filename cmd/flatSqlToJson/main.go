@@ -311,11 +311,14 @@ func populateStruct(v reflect.Value, resultMap map[string][]map[string]interface
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
 		fieldName := v.Type().Field(i).Name
-		newFullFieldName := fullFieldName + "." + fieldName
-		log.Debug().Str("field", newFullFieldName).Msg("Processing field")
-		if fieldExistsInResultMap(resultMap, newFullFieldName) {
+		fullFieldName := fullFieldName + "." + fieldName
+		fullFieldName = strings.ToLower(fullFieldName)
+		fullFieldName = strings.ToUpper(string(fullFieldName[0])) + fullFieldName[1:]
+
+		log.Debug().Str("field", fullFieldName).Msg("Processing field")
+		if fieldExistsInResultMap(resultMap, fullFieldName) {
 			//log.Debug().Str("field", newFullFieldName).Msg("Field exists in resultMap")
-			err := populateField(field, resultMap, newFullFieldName, structID)
+			err := populateField(field, resultMap, fullFieldName, structID)
 			if err != nil {
 				return err
 			}
@@ -328,6 +331,9 @@ func populateStruct(v reflect.Value, resultMap map[string][]map[string]interface
 }
 
 func fieldExistsInResultMap(resultMap map[string][]map[string]interface{}, fieldName string) bool {
+	fieldName = strings.ToLower(fieldName)
+	fieldName = strings.ToUpper(string(fieldName[0])) + fieldName[1:]
+
 	if _, ok := resultMap[fieldName]; ok {
 		return true
 	}
@@ -402,6 +408,8 @@ func populateSlice(field reflect.Value, resultMap map[string][]map[string]interf
 					nestedField := newElem.Field(i)
 					nestedFieldName := newElem.Type().Field(i).Name
 					nestedFullFieldName := fieldName + "." + nestedFieldName
+					nestedFullFieldName = strings.ToLower(nestedFullFieldName)
+					nestedFullFieldName = strings.ToUpper(string(nestedFullFieldName[0])) + nestedFullFieldName[1:]
 
 					if fieldExistsInResultMap(resultMap, nestedFullFieldName) {
 						err := populateField(nestedField, resultMap, nestedFullFieldName, newElemID)

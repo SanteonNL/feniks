@@ -1,21 +1,24 @@
-    SELECT
-    'Patient' as field_name,
-    '' as parent_id,
-    p.identificatienummer Id,
-    -- CASE
-    --     WHEN p.geslachtcode = 'M' THEN 'male'
-    --     WHEN p.geslachtcode = 'F' THEN 'female'
-    --     ELSE 'unknown'
-    -- END as gender, 
-    'male' as gender,
-    p.geboortedatum Birthdate
-    FROM patient p
-WHERE 1=1
-AND p.identificatienummer = '123';
+    WITH names AS (
+        SELECT
+            'Patient' as field_name,
+            '' as parent_id,
+            p.identificatienummer as id, 
+            p.geboortedatum as birthDate,
+            null as system, 
+            null as value
+        FROM
+            patient p
+        WHERE 1=1
+            AND p.identificatienummer = '123'
+    )
+    SELECT * FROM names
+    UNION ALL
+    SELECT 'Patient.identifier' as field_name, id as parent_id, id as parent_id, null as birthDate, 'https://santeon.nl' as system, id as value FROM names;
+
 
 WITH names AS (
     SELECT
-        'Patient.Name' as field_name,
+        'Patient.name' as field_name,
         p.identificatienummer as parent_id,
         concat(p.identificatienummer,humanName.lastname) AS id,
         humanName.lastname as family,
@@ -34,7 +37,7 @@ SELECT * FROM names;
 
 WITH names AS (
     SELECT
-        'Patient.Name' as field_name,
+        'Patient.name' as field_name,
         p.identificatienummer as parent_id,
         CONCAT(p.identificatienummer, humanName.lastname, humanName.period_start, ROW_NUMBER() OVER (ORDER BY p.identificatienummer, humanName.lastname, humanName.period_start)) AS id,
         humanName.lastname as family,
@@ -49,11 +52,11 @@ WITH names AS (
     GROUP BY
         p.identificatienummer, humanName.lastname,humanName.firstname, humanName.period_start, humanName.period_end
 )  
-SELECT 'Patient.Name.Period' as field_name, id as parent_id, id, start, endx as end  FROM names;
+SELECT 'Patient.name.period' as field_name, id as parent_id, id, start, endx as end  FROM names;
 
 
 SELECT
-    'Patient.Contact.Telecom' AS field_name,
+    'Patient.contact.telecom' AS field_name,
     c.id AS parent_id,
     CONCAT(c.id, cp.system) AS id,
     cp.system,
@@ -67,7 +70,7 @@ GROUP BY
      cp.system, cp.value, c.id;
 
 SELECT
-    'Patient.Contact' AS field_name,
+    'Patient.contact' AS field_name,
     p.identificatienummer AS parent_id,
     c.id AS id
 FROM
@@ -77,7 +80,7 @@ WHERE 1=1
     AND p.identificatienummer = '123';
 
 SELECT
-    'Patient.Contact.Telecom' AS field_name,
+    'Patient.contact.telecom' AS field_name,
     c.id AS parent_id,
     CONCAT(c.id, cp.system) AS id,
     cp.system,
