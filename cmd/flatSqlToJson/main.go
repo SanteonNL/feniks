@@ -1,10 +1,9 @@
 package main
 
 import (
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"io"
+
 	"os"
 	"reflect"
 	"strconv"
@@ -25,53 +24,17 @@ type SearchParameter struct {
 	Value     interface{}
 }
 
-type DataSource interface {
-	Read() (map[string][]map[string]interface{}, error)
+type SearchFilter struct {
+	Code       string   `json:"code"`
+	Modifier   []string `json:"modifier,omitempty"`
+	Comparator string   `json:"comparator,omitempty"`
+	Value      string   `json:"value"`
+	Type       string   `json:"type,omitempty"`
+	Expression string
 }
 
-type SQLDataSource struct {
-	db    *sqlx.DB
-	query string
-}
-
-type Mapping struct {
-	FieldName string
-	Files     []FileMapping
-}
-
-type FileMapping struct {
-	FileName      string
-	FieldMappings []FieldMapping
-}
-
-type FieldMapping struct {
-	FHIRField     map[string]string
-	ParentIDField string
-	IDField       string
-}
-
-type CSVDataSource struct {
-	filePath string
-	mapper   *Mapper
-}
-
-type Mapper struct {
-	Mappings []Mapping
-}
-
-type MapperConfig struct {
-	Mappings []struct {
-		FieldName string `json:"fieldName"`
-		Files     []struct {
-			FileName      string `json:"fileName"`
-			FieldMappings []struct {
-				CSVFields     map[string]string `json:"csvFields"`
-				IDField       string            `json:"idField"`
-				ParentIDField string            `json:"parentIdField"`
-			} `json:"fieldMappings"`
-		} `json:"files"`
-	} `json:"mappings"`
-}
+// Key = Patient.identifier
+type SearchFilterGroup map[string]SearchFilter
 
 func main() {
 	startTime := time.Now()
@@ -96,7 +59,7 @@ func main() {
 	SQLDataSource := NewSQLDataSource(db, query)
 
 	mapperPath := util.GetAbsolutePath("config/csv_mappings.json")
-	mapper, err := LoadMapperFromJSON(mapperPath)
+	mapper, err := LoadCSVMapperFromConfig(mapperPath)
 	if err != nil {
 		l.Fatal().Err(err).Msg("Failed to load mapper configuration")
 	}
@@ -112,9 +75,11 @@ func main() {
 		dataSource = SQLDataSource
 	}
 
+	searchFilterGroup := SearchFilterGroup{"Patient.identifier": SearchFilter{Code: "identifier", Type: "token", Value: "https://santeon.nl|1232323", Expression: "Patient.identifier"}}
+
 	patient := fhir.Patient{}
 
-	err = ExtractAndMapData(dataSource, &patient, l)
+	err = ExtractAndMapData(dataSource, &patient, searchFilterGroup, l)
 	if err != nil {
 		l.Fatal().Stack().Err(errors.WithStack(err)).Msg("Failed to populate struct")
 		return
@@ -134,142 +99,7 @@ func main() {
 	l.Debug().Msgf("Execution time: %s", duration)
 }
 
-func NewSQLDataSource(db *sqlx.DB, query string) *SQLDataSource {
-	return &SQLDataSource{
-		db:    db,
-		query: query,
-	}
-}
-
-func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
-	result := make(map[string][]map[string]interface{})
-
-	rows, err := s.db.Queryx(s.query)
-	if err != nil {
-		return nil, fmt.Errorf("error executing query: %w", err)
-	}
-	defer rows.Close()
-
-	resultSetCount := 0
-	for {
-		resultSetCount++
-		log.Debug().Int("resultSet", resultSetCount).Msg("Processing result set")
-
-		rowCount := 0
-		for rows.Next() {
-			rowCount++
-			row := make(map[string]interface{})
-			err = rows.MapScan(row)
-			if err != nil {
-				return nil, fmt.Errorf("error scanning row: %w", err)
-			}
-
-			log.Debug().Int("resultSet", resultSetCount).Int("row", rowCount).Interface("row", row).Msg("Row from SQL query")
-
-			// Remove NULL values
-			for key, value := range row {
-				if value == nil {
-					delete(row, key)
-				}
-			}
-
-			fieldName, ok := row["field_name"].(string)
-			if !ok {
-				return nil, fmt.Errorf("field_name not found or not a string in result set %d, row %d", resultSetCount, rowCount)
-			}
-
-			delete(row, "field_name")
-			result[fieldName] = append(result[fieldName], row)
-		}
-
-		if err := rows.Err(); err != nil {
-			return nil, fmt.Errorf("error iterating over rows in result set %d: %w", resultSetCount, err)
-		}
-
-		log.Debug().Int("resultSet", resultSetCount).Int("rowCount", rowCount).Msg("Finished processing result set")
-
-		// Move to the next result set
-		if !rows.NextResultSet() {
-			break // No more result sets
-		}
-	}
-
-	log.Debug().Int("resultSets", resultSetCount).Interface("result", result).Msg("Data from SQL query")
-	return result, nil
-}
-
-func NewCSVDataSource(filePath string, mapper *Mapper) *CSVDataSource {
-	return &CSVDataSource{
-		filePath: filePath,
-		mapper:   mapper,
-	}
-}
-
-func (c *CSVDataSource) Read() (map[string][]map[string]interface{}, error) {
-	result := make(map[string][]map[string]interface{})
-
-	for _, mapping := range c.mapper.Mappings {
-		for _, fileMapping := range mapping.Files {
-			fileData, err := c.readFile(fileMapping)
-			if err != nil {
-				return nil, err
-			}
-			result[mapping.FieldName] = append(result[mapping.FieldName], fileData...)
-		}
-	}
-
-	return result, nil
-}
-
-func (c *CSVDataSource) readFile(fileMapping FileMapping) ([]map[string]interface{}, error) {
-	file, err := os.Open(fileMapping.FileName)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	reader.Comma = ';'
-	headers, err := reader.Read()
-	if err != nil {
-		return nil, err
-	}
-
-	var result []map[string]interface{}
-
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		row := make(map[string]interface{})
-		for i, header := range headers {
-			for _, fieldMapping := range fileMapping.FieldMappings {
-				if fhirField, ok := fieldMapping.FHIRField[header]; ok {
-					if record[i] != "" {
-						row[fhirField] = record[i]
-					}
-				}
-				if header == fieldMapping.ParentIDField {
-					row["parent_id"] = record[i]
-				}
-				if header == fieldMapping.IDField {
-					row["id"] = record[i]
-				}
-			}
-		}
-
-		result = append(result, row)
-	}
-
-	return result, nil
-}
-
-func ExtractAndMapData(ds DataSource, s interface{}, logger zerolog.Logger) error {
+func ExtractAndMapData(ds DataSource, s interface{}, sg SearchFilterGroup, logger zerolog.Logger) error {
 	data, err := ds.Read()
 	if err != nil {
 		return err
@@ -277,10 +107,10 @@ func ExtractAndMapData(ds DataSource, s interface{}, logger zerolog.Logger) erro
 	logger.Debug().Interface("rawData", data).Msgf("Data before mapping:\n%+v", data)
 
 	v := reflect.ValueOf(s).Elem()
-	return populateStruct(v, data, "")
+	return populateAndFilterStruct(v, data, "", sg)
 }
 
-func populateStruct(v reflect.Value, resultMap map[string][]map[string]interface{}, parentField string) error {
+func populateAndFilterStruct(v reflect.Value, resultMap map[string][]map[string]interface{}, parentField string, sg SearchFilterGroup) error {
 	if v.Kind() != reflect.Struct {
 		return fmt.Errorf("value is not a struct")
 	}
@@ -318,16 +148,117 @@ func populateStruct(v reflect.Value, resultMap map[string][]map[string]interface
 		log.Debug().Str("field", fullFieldName).Msg("Processing field")
 		if fieldExistsInResultMap(resultMap, fullFieldName) {
 			//log.Debug().Str("field", newFullFieldName).Msg("Field exists in resultMap")
-			err := populateField(field, resultMap, fullFieldName, structID)
+			err := populateField(field, resultMap, fullFieldName, structID, sg)
 			if err != nil {
 				return err
 			}
+
+			if _, ok := sg[fullFieldName]; ok {
+				log.Debug().Str("field", fullFieldName).Msg("Field exists in search filter group")
+			}
+
+			err = filterField(field, sg, fullFieldName)
+			if err != nil {
+				return err
+			}
+
 		} else {
-			//log.Debug().Str("field", newFullFieldName).Msg("Field does not exist in resultMap")
+			log.Debug().Str("field", fullFieldName).Msg("Field does not exist in resultMap")
 		}
 	}
 
 	return nil
+}
+
+func filterField(field reflect.Value, sg SearchFilterGroup, fullFieldName string) error {
+	if searchFilter, ok := sg[fullFieldName]; ok {
+		log.Debug().Str("field", fullFieldName).Interface("searchFilter", searchFilter).Msg("Filtering field")
+
+		// Add Coding struct filtering logic
+		system, code := parseFilter(searchFilter.Value)
+		log.Debug().Str("field", fullFieldName).Str("system", system).Str("code", code).Msg("Filtering Coding field")
+		if !fieldMatchesIdentifierFilter(field, system, code) {
+			log.Debug().Str("field", fullFieldName).Msg("Field does not match Coding filter, setting to zero value")
+			field.Set(reflect.Zero(field.Type()))
+		} else {
+			log.Debug().Str("field", fullFieldName).Msg("Field matches Coding filter")
+		}
+	}
+	return nil
+}
+
+func fieldMatchesIdentifierFilter(field reflect.Value, system, code string) bool {
+	if field.Kind() == reflect.Slice {
+		for i := 0; i < field.Len(); i++ {
+			if matchesIdentifierFilter(field.Index(i), system, code) {
+				return true
+			}
+		}
+	} else if field.Kind() == reflect.Struct {
+		return matchesIdentifierFilter(field, system, code)
+	}
+	return false
+}
+
+func matchesIdentifierFilter(v reflect.Value, system, code string) bool {
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return false
+		}
+		v = v.Elem()
+	}
+
+	if v.Kind() != reflect.Struct {
+		return false
+	}
+
+	identifierField := v.FieldByName("Identifier")
+	if identifierField.IsValid() && identifierField.Kind() == reflect.Slice {
+		for i := 0; i < identifierField.Len(); i++ {
+			coding := identifierField.Index(i)
+			if matchesIndentifierValues(coding, system, code) {
+				return true
+			}
+		}
+	} else {
+		return matchesIndentifierValues(v, system, code)
+	}
+
+	return false
+}
+func matchesIndentifierValues(v reflect.Value, system, code string) bool {
+	systemField := v.FieldByName("System")
+	codeField := v.FieldByName("Value")
+
+	if !systemField.IsValid() || !codeField.IsValid() {
+		return false
+	}
+
+	if systemField.Kind() == reflect.Ptr {
+		if systemField.IsNil() {
+			return false
+		}
+		systemField = systemField.Elem()
+	}
+
+	if codeField.Kind() == reflect.Ptr {
+		if codeField.IsNil() {
+			return false
+		}
+		codeField = codeField.Elem()
+	}
+
+	log.Debug().Str("system", systemField.String()).Str("code", codeField.String()).Msg("Matching identifier values")
+
+	return (system == "" || systemField.String() == system) && codeField.String() == code
+}
+
+func parseFilter(filter string) (string, string) {
+	parts := strings.Split(filter, "|")
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return "", parts[0]
 }
 
 func fieldExistsInResultMap(resultMap map[string][]map[string]interface{}, fieldName string) bool {
@@ -347,18 +278,18 @@ func fieldExistsInResultMap(resultMap map[string][]map[string]interface{}, field
 	return false
 }
 
-func populateField(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string) error {
+func populateField(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string, sg SearchFilterGroup) error {
 	log.Debug().Msgf("Populating field %s in populateField: %s and parentID", fieldName, parentID)
 	switch field.Kind() {
 	case reflect.Slice:
-		return populateSlice(field, resultMap, fieldName, parentID)
+		return populateSlice(field, resultMap, fieldName, parentID, sg)
 	case reflect.Struct:
-		return populateStruct(field, resultMap, fieldName)
+		return populateAndFilterStruct(field, resultMap, fieldName, sg)
 	case reflect.Ptr:
 		if field.IsNil() {
 			field.Set(reflect.New(field.Type().Elem()))
 		}
-		return populateField(field.Elem(), resultMap, fieldName, parentID)
+		return populateField(field.Elem(), resultMap, fieldName, parentID, sg)
 	default:
 		return populateBasicType(field, resultMap, fieldName)
 	}
@@ -386,7 +317,7 @@ func populateBasicType(field reflect.Value, resultMap map[string][]map[string]in
 	return nil
 }
 
-func populateSlice(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string) error {
+func populateSlice(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string, sg SearchFilterGroup) error {
 	log.Debug().Msgf("Populating slice field: %s with parentID: %s", fieldName, parentID)
 	if data, ok := resultMap[fieldName]; ok {
 		for _, row := range data {
@@ -412,7 +343,7 @@ func populateSlice(field reflect.Value, resultMap map[string][]map[string]interf
 					nestedFullFieldName = strings.ToUpper(string(nestedFullFieldName[0])) + nestedFullFieldName[1:]
 
 					if fieldExistsInResultMap(resultMap, nestedFullFieldName) {
-						err := populateField(nestedField, resultMap, nestedFullFieldName, newElemID)
+						err := populateField(nestedField, resultMap, nestedFullFieldName, newElemID, sg)
 						if err != nil {
 							return err
 						}
@@ -558,50 +489,4 @@ func SetField(obj interface{}, name string, value interface{}) error {
 	}
 
 	return nil
-}
-
-func LoadMapperFromJSON(filePath string) (*Mapper, error) {
-	jsonFile, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	var config MapperConfig
-	err = json.Unmarshal(jsonFile, &config)
-	if err != nil {
-		return nil, err
-	}
-
-	mapper := &Mapper{
-		Mappings: make([]Mapping, len(config.Mappings)),
-	}
-
-	for i, configMapping := range config.Mappings {
-		mapping := Mapping{
-			FieldName: configMapping.FieldName,
-			Files:     make([]FileMapping, len(configMapping.Files)),
-		}
-
-		for j, configFile := range configMapping.Files {
-			fileMapping := FileMapping{
-				FileName:      configFile.FileName,
-				FieldMappings: make([]FieldMapping, len(configFile.FieldMappings)),
-			}
-
-			for k, configFieldMapping := range configFile.FieldMappings {
-				fieldMapping := FieldMapping{
-					FHIRField:     configFieldMapping.CSVFields,
-					IDField:       configFieldMapping.IDField,
-					ParentIDField: configFieldMapping.ParentIDField,
-				}
-				fileMapping.FieldMappings[k] = fieldMapping
-			}
-
-			mapping.Files[j] = fileMapping
-		}
-
-		mapper.Mappings[i] = mapping
-	}
-
-	return mapper, nil
 }
