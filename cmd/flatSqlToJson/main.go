@@ -75,7 +75,7 @@ func main() {
 		dataSource = SQLDataSource
 	}
 
-	searchFilterGroup := SearchFilterGroup{"Patient.identifier": SearchFilter{Code: "identifier", Type: "token", Value: "https://santeon.nl|1232323", Expression: "Patient.identifier"}}
+	searchFilterGroup := SearchFilterGroup{"Patient.identifier": SearchFilter{Code: "identifier", Type: "token", Value: "https://santeon.nl|123", Expression: "Patient.identifier"}}
 
 	patient := fhir.Patient{}
 
@@ -157,7 +157,7 @@ func populateAndFilterStruct(v reflect.Value, resultMap map[string][]map[string]
 				log.Debug().Str("field", fullFieldName).Msg("Field exists in search filter group")
 			}
 
-			err = filterField(field, sg, fullFieldName)
+			err = FilterField(field, sg, fullFieldName)
 			if err != nil {
 				return err
 			}
@@ -168,97 +168,6 @@ func populateAndFilterStruct(v reflect.Value, resultMap map[string][]map[string]
 	}
 
 	return nil
-}
-
-func filterField(field reflect.Value, sg SearchFilterGroup, fullFieldName string) error {
-	if searchFilter, ok := sg[fullFieldName]; ok {
-		log.Debug().Str("field", fullFieldName).Interface("searchFilter", searchFilter).Msg("Filtering field")
-
-		// Add Coding struct filtering logic
-		system, code := parseFilter(searchFilter.Value)
-		log.Debug().Str("field", fullFieldName).Str("system", system).Str("code", code).Msg("Filtering Coding field")
-		if !fieldMatchesIdentifierFilter(field, system, code) {
-			log.Debug().Str("field", fullFieldName).Msg("Field does not match Coding filter, setting to zero value")
-			field.Set(reflect.Zero(field.Type()))
-		} else {
-			log.Debug().Str("field", fullFieldName).Msg("Field matches Coding filter")
-		}
-	}
-	return nil
-}
-
-func fieldMatchesIdentifierFilter(field reflect.Value, system, code string) bool {
-	if field.Kind() == reflect.Slice {
-		for i := 0; i < field.Len(); i++ {
-			if matchesIdentifierFilter(field.Index(i), system, code) {
-				return true
-			}
-		}
-	} else if field.Kind() == reflect.Struct {
-		return matchesIdentifierFilter(field, system, code)
-	}
-	return false
-}
-
-func matchesIdentifierFilter(v reflect.Value, system, code string) bool {
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return false
-		}
-		v = v.Elem()
-	}
-
-	if v.Kind() != reflect.Struct {
-		return false
-	}
-
-	identifierField := v.FieldByName("Identifier")
-	if identifierField.IsValid() && identifierField.Kind() == reflect.Slice {
-		for i := 0; i < identifierField.Len(); i++ {
-			coding := identifierField.Index(i)
-			if matchesIndentifierValues(coding, system, code) {
-				return true
-			}
-		}
-	} else {
-		return matchesIndentifierValues(v, system, code)
-	}
-
-	return false
-}
-func matchesIndentifierValues(v reflect.Value, system, code string) bool {
-	systemField := v.FieldByName("System")
-	codeField := v.FieldByName("Value")
-
-	if !systemField.IsValid() || !codeField.IsValid() {
-		return false
-	}
-
-	if systemField.Kind() == reflect.Ptr {
-		if systemField.IsNil() {
-			return false
-		}
-		systemField = systemField.Elem()
-	}
-
-	if codeField.Kind() == reflect.Ptr {
-		if codeField.IsNil() {
-			return false
-		}
-		codeField = codeField.Elem()
-	}
-
-	log.Debug().Str("system", systemField.String()).Str("code", codeField.String()).Msg("Matching identifier values")
-
-	return (system == "" || systemField.String() == system) && codeField.String() == code
-}
-
-func parseFilter(filter string) (string, string) {
-	parts := strings.Split(filter, "|")
-	if len(parts) == 2 {
-		return parts[0], parts[1]
-	}
-	return "", parts[0]
 }
 
 func fieldExistsInResultMap(resultMap map[string][]map[string]interface{}, fieldName string) bool {
