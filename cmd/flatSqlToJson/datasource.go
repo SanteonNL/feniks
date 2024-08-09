@@ -150,7 +150,28 @@ func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
 			}
 
 			delete(row, "field_name")
-			result[fieldName] = append(result[fieldName], row)
+
+			// Use a unique identifier for each row
+			uniqueID, ok := row["id"].(string)
+			if !ok {
+				return nil, fmt.Errorf("id not found or not a string in result set %d, row %d", resultSetCount, rowCount)
+			}
+
+			// Check if this uniqueID already exists for this fieldName
+			found := false
+			for i, existingRow := range result[fieldName] {
+				if existingID, ok := existingRow["id"].(string); ok && existingID == uniqueID {
+					// Update existing row instead of appending a new one
+					result[fieldName][i] = row
+					found = true
+					break
+				}
+			}
+
+			// If not found, append as a new row
+			if !found {
+				result[fieldName] = append(result[fieldName], row)
+			}
 		}
 
 		if err := rows.Err(); err != nil {
@@ -168,7 +189,6 @@ func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
 	log.Debug().Int("resultSets", resultSetCount).Interface("result", result).Msg("Data from SQL query")
 	return result, nil
 }
-
 func NewCSVDataSource(filePath string, mapper *CSVMapper) *CSVDataSource {
 	return &CSVDataSource{
 		filePath: filePath,

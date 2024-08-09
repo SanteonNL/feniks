@@ -157,10 +157,10 @@ func populateAndFilterStruct(v reflect.Value, resultMap map[string][]map[string]
 				log.Debug().Str("field", fullFieldName).Msg("Field exists in search filter group")
 			}
 
-			err = FilterField(field, sg, fullFieldName)
-			if err != nil {
-				return err
-			}
+			// err = FilterField(field, sg, fullFieldName)
+			// if err != nil {
+			// 	return err
+			// }
 
 		} else {
 			log.Debug().Str("field", fullFieldName).Msg("Field does not exist in resultMap")

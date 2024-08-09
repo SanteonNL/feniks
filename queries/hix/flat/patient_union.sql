@@ -36,7 +36,7 @@ WHERE
 UNION ALL
 
 SELECT
-    'Patient.Name' AS field_name,
+    'Patient.name' AS field_name,
     p.identificatienummer AS parent_id,
     CONCAT(p.identificatienummer, p.family) AS id,
     NULL AS Birthdate,
@@ -50,7 +50,7 @@ FROM
 UNION ALL
 
 SELECT
-    'Patient.Contact' AS field_name,
+    'Patient.contact' AS field_name,
     pc.identificatienummer AS parent_id,
     pc.contact_id AS id,
     NULL AS Birthdate,
@@ -64,7 +64,7 @@ FROM
 UNION ALL
 
 SELECT
-    'Patient.Contact.Telecom' AS field_name,
+    'Patient.contact.telecom' AS field_name,
     cp.contact_id AS parent_id,
     CONCAT(cp.contact_id, cp.system) AS id,
     NULL AS Birthdate,

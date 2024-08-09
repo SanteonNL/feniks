@@ -1,8 +1,8 @@
 WITH names AS (
     SELECT
         'Patient' as field_name,
-        '' as parent_id,
         p.identificatienummer as id,
+        '' as parent_id,
         p.geboortedatum as birthDate,
         null as system,
         null as value
@@ -19,15 +19,14 @@ FROM
 UNION ALL
 SELECT
     'Patient.identifier' as field_name,
-    id as parent_id,
+    id as id,
     id as parent_id,
     null as birthDate,
     'https://santeon.nl' as system,
     id as value
 FROM
     names
-UNION
-ALL
+UNION ALL
 SELECT
     'Patient.identifier.type' as field_name,
     id,
@@ -36,7 +35,61 @@ SELECT
     null as system,
     null as value
 FROM
+    names
+UNION ALL
+SELECT
+    'Patient.identifier' as field_name,
+    '12345' as id,
+    id as parent_id,
+    null as birthDate,
+    'https://santeon.nl' as system,
+    id as value
+FROM
+    names
+UNION ALL
+SELECT
+    'Patient.identifier.type' as field_name,
+    '123435465',
+    '12345' as parent_id,
+    null as birthDate,
+    null as system,
+    null as value
+FROM
     names;
+
+
+
+-- SELECT
+--     'Patient.identifier' as field_name,
+--     '123345' as id,
+--     id as parent_id,
+--     null as birthDate,
+--     'https://santeon.nl' as system,
+--     '12345' as value
+-- FROM
+--     names;
+-- UNION ALL
+-- SELECT
+--     'Patient.identifier' as field_name,
+--     id as id,
+--     id as parent_id,
+--     null as birthDate,
+--     'https://santeon.nl' as system,
+--     id as value
+-- FROM
+--     names
+-- UNION
+-- ALL
+-- SELECT
+--     'Patient.identifier.type' as field_name,
+--     id,
+--     id as parent_id,
+--     null as birthDate,
+--     null as system,
+--     null as value
+-- FROM
+--     names;
+
 
 
 
@@ -50,7 +103,7 @@ SELECT
 SELECT
     'Patient.identifier.type.coding' as field_name,
         '123'as parent_id,
-    '1234' as id,
+    '12345' as id,
     'http://terminology.hl7.org/CodeSystem/v2-0203' as system,
     'AN' as code    ;
 
