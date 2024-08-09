@@ -107,84 +107,48 @@ func ExtractAndMapData(ds DataSource, s interface{}, sg SearchFilterGroup, logge
 	logger.Debug().Interface("rawData", data).Msgf("Data before mapping:\n%+v", data)
 
 	v := reflect.ValueOf(s).Elem()
-	return populateAndFilterStruct(v, data, "", sg)
+	return populateStruct(v, data, "", "", sg)
 }
-
-func populateAndFilterStruct(v reflect.Value, resultMap map[string][]map[string]interface{}, parentField string, sg SearchFilterGroup) error {
-	if v.Kind() != reflect.Struct {
-		return fmt.Errorf("value is not a struct")
+func populateStruct(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string, sg SearchFilterGroup) error {
+	if fieldName == "" {
+		fieldName = field.Type().Name()
 	}
 
-	structName := v.Type().Name()
-	fullFieldName := parentField
-
-	if parentField == "" {
-		fullFieldName = structName
-	}
-
-	if data, ok := resultMap[fullFieldName]; ok {
+	if data, ok := resultMap[fieldName]; ok {
 		for _, row := range data {
-			err := populateStructFromRow(v.Addr().Interface(), row)
-			if err != nil {
-				return err
+			if row["parent_id"] == parentID || parentID == "" {
+				err := populateStructFromRow(field.Addr().Interface(), row)
+				if err != nil {
+					return err
+				}
+
+				structID := ""
+				if idField := field.FieldByName("Id"); idField.IsValid() && idField.Kind() == reflect.Ptr && idField.Type().Elem().Kind() == reflect.String {
+					if idField.Elem().IsValid() {
+						structID = idField.Elem().String()
+					}
+				}
+
+				for i := 0; i < field.NumField(); i++ {
+					nestedField := field.Field(i)
+					nestedFieldName := field.Type().Field(i).Name
+					nestedFullFieldName := fieldName + "." + nestedFieldName
+					nestedFullFieldName = strings.ToLower(nestedFullFieldName)
+					nestedFullFieldName = strings.ToUpper(string(nestedFullFieldName[0])) + nestedFullFieldName[1:]
+
+					if fieldExistsInResultMap(resultMap, nestedFullFieldName) {
+						err := populateField(nestedField, resultMap, nestedFullFieldName, structID, sg)
+						if err != nil {
+							return err
+						}
+					}
+				}
 			}
 		}
+	} else {
+		log.Debug().Msgf("No data found for field: %s", fieldName)
 	}
-
-	structID := ""
-	if idField := v.FieldByName("Id"); idField.IsValid() && idField.Kind() == reflect.Ptr && idField.Type().Elem().Kind() == reflect.String {
-		if idField.Elem().IsValid() {
-			structID = idField.Elem().String()
-		}
-	}
-
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		fieldName := v.Type().Field(i).Name
-		fullFieldName := fullFieldName + "." + fieldName
-		fullFieldName = strings.ToLower(fullFieldName)
-		fullFieldName = strings.ToUpper(string(fullFieldName[0])) + fullFieldName[1:]
-
-		log.Debug().Str("field", fullFieldName).Msg("Processing field")
-		if fieldExistsInResultMap(resultMap, fullFieldName) {
-			//log.Debug().Str("field", newFullFieldName).Msg("Field exists in resultMap")
-			err := populateField(field, resultMap, fullFieldName, structID, sg)
-			if err != nil {
-				return err
-			}
-
-			if _, ok := sg[fullFieldName]; ok {
-				log.Debug().Str("field", fullFieldName).Msg("Field exists in search filter group")
-			}
-
-			// err = FilterField(field, sg, fullFieldName)
-			// if err != nil {
-			// 	return err
-			// }
-
-		} else {
-			log.Debug().Str("field", fullFieldName).Msg("Field does not exist in resultMap")
-		}
-	}
-
 	return nil
-}
-
-func fieldExistsInResultMap(resultMap map[string][]map[string]interface{}, fieldName string) bool {
-	fieldName = strings.ToLower(fieldName)
-	fieldName = strings.ToUpper(string(fieldName[0])) + fieldName[1:]
-
-	if _, ok := resultMap[fieldName]; ok {
-		return true
-	}
-
-	for key := range resultMap {
-		if strings.HasPrefix(key, fieldName+".") {
-			log.Debug().Msgf("Nested field exists in resultMap: %s", key)
-			return true
-		}
-	}
-	return false
 }
 
 func populateField(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string, sg SearchFilterGroup) error {
@@ -193,18 +157,18 @@ func populateField(field reflect.Value, resultMap map[string][]map[string]interf
 	case reflect.Slice:
 		return populateSlice(field, resultMap, fieldName, parentID, sg)
 	case reflect.Struct:
-		return populateAndFilterStruct(field, resultMap, fieldName, sg)
+		return populateStruct(field, resultMap, fieldName, parentID, sg)
 	case reflect.Ptr:
 		if field.IsNil() {
 			field.Set(reflect.New(field.Type().Elem()))
 		}
 		return populateField(field.Elem(), resultMap, fieldName, parentID, sg)
 	default:
-		return populateBasicType(field, resultMap, fieldName)
+		return populateBasicType(field, resultMap, fieldName, parentID)
 	}
 }
 
-func populateBasicType(field reflect.Value, resultMap map[string][]map[string]interface{}, fullFieldName string) error {
+func populateBasicType(field reflect.Value, resultMap map[string][]map[string]interface{}, fullFieldName string, parentID string) error {
 	log.Debug().Msgf("Populating basic type fullFieldName: %s", fullFieldName)
 
 	data, ok := resultMap[fullFieldName]
@@ -216,10 +180,12 @@ func populateBasicType(field reflect.Value, resultMap map[string][]map[string]in
 	log.Debug().Msgf("Populating basic type fieldName: %s", fieldName)
 
 	for _, row := range data {
-		for key, value := range row {
-			if strings.EqualFold(key, fieldName) {
-				log.Debug().Msgf("Setting field: %s with value: %v", fieldName, value)
-				return SetField(field.Addr().Interface(), fieldName, value)
+		if row["parent_id"] == parentID || parentID == "" {
+			for key, value := range row {
+				if strings.EqualFold(key, fieldName) {
+					log.Debug().Msgf("Setting field: %s with value: %v", fieldName, value)
+					return SetField(field.Addr().Interface(), fieldName, value)
+				}
 			}
 		}
 	}
@@ -398,4 +364,21 @@ func SetField(obj interface{}, name string, value interface{}) error {
 	}
 
 	return nil
+}
+
+func fieldExistsInResultMap(resultMap map[string][]map[string]interface{}, fieldName string) bool {
+	fieldName = strings.ToLower(fieldName)
+	fieldName = strings.ToUpper(string(fieldName[0])) + fieldName[1:]
+
+	if _, ok := resultMap[fieldName]; ok {
+		return true
+	}
+
+	for key := range resultMap {
+		if strings.HasPrefix(key, fieldName+".") {
+			log.Debug().Msgf("Nested field exists in resultMap: %s", key)
+			return true
+		}
+	}
+	return false
 }

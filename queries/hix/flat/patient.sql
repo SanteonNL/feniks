@@ -96,7 +96,7 @@ FROM
 
 SELECT
     'Patient.identifier.type.coding' as field_name,
-    '123'as parent_id,
+    '123435465'as parent_id,
     '1234' as id,
     'http://terminology.hl7.org/CodeSystem/v2-0203' as system,
     'MR' as code;
