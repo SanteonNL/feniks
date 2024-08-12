@@ -58,11 +58,11 @@ func main() {
 		dataSource = SQLDataSource
 	}
 
-	searchFilterGroup := SearchFilterGroup{"Patient.identifier": SearchFilter{Code: "identifier", Type: "token", Value: "https://santeon.nl|123", Expression: "Patient.identifier"}}
+	searchParameterMap := SearchParameterMap{"Patient.identifier": SearchParameter{Code: "identifier", Type: "token", Value: "https://santeon.nl|123", Expression: "Patient.identifier"}}
 
 	patient := fhir.Patient{}
 
-	err = ExtractAndMapData(dataSource, &patient, searchFilterGroup, l)
+	err = ProcessDataSource(dataSource, &patient, searchParameterMap, l)
 	if err != nil {
 		l.Fatal().Stack().Err(errors.WithStack(err)).Msg("Failed to populate struct")
 		return
@@ -82,7 +82,7 @@ func main() {
 	l.Debug().Msgf("Execution time: %s", duration)
 }
 
-func ExtractAndMapData(ds DataSource, s interface{}, sg SearchFilterGroup, logger zerolog.Logger) error {
+func ProcessDataSource(ds DataSource, s interface{}, searchParameterMap SearchParameterMap, logger zerolog.Logger) error {
 	data, err := ds.Read()
 	if err != nil {
 		return err
@@ -90,66 +90,100 @@ func ExtractAndMapData(ds DataSource, s interface{}, sg SearchFilterGroup, logge
 	logger.Debug().Interface("rawData", data).Msgf("Data before mapping:\n%+v", data)
 
 	v := reflect.ValueOf(s).Elem()
-	return populateStruct(v, data, "", "", sg)
+
+	return populateStruct(v, data, "", "", searchParameterMap)
 }
 
-func populateStruct(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string, sg SearchFilterGroup) error {
-	if fieldName == "" {
-		fieldName = field.Type().Name()
+func populateStruct(field reflect.Value, resultMap map[string][]map[string]interface{}, fhirPath string, parentID string, searchParameterMap SearchParameterMap) error {
+	if fhirPath == "" {
+		fhirPath = field.Type().Name()
 	}
 
-	if data, ok := resultMap[fieldName]; ok {
-		for _, row := range data {
-			if row["parent_id"] == parentID || parentID == "" {
-				err := populateStructFromRow(field.Addr().Interface(), row)
-				if err != nil {
-					return err
-				}
+	rows, exists := resultMap[fhirPath]
+	if !exists {
+		log.Debug().Msgf("No data found for FHIR path: %s", fhirPath)
+		return nil
+	}
 
-				structID := ""
-				if idField := field.FieldByName("Id"); idField.IsValid() && idField.Kind() == reflect.Ptr && idField.Type().Elem().Kind() == reflect.String {
-					if idField.Elem().IsValid() {
-						structID = idField.Elem().String()
-					}
-				}
-
-				for i := 0; i < field.NumField(); i++ {
-					nestedField := field.Field(i)
-					nestedFieldName := field.Type().Field(i).Name
-					nestedFullFieldName := fieldName + "." + nestedFieldName
-					nestedFullFieldName = strings.ToLower(nestedFullFieldName)
-					nestedFullFieldName = strings.ToUpper(string(nestedFullFieldName[0])) + nestedFullFieldName[1:]
-
-					if fieldExistsInResultMap(resultMap, nestedFullFieldName) {
-						err := populateField(nestedField, resultMap, nestedFullFieldName, structID, sg)
-						if err != nil {
-							return err
-						}
-					}
-				}
+	for _, row := range rows {
+		if row["parent_id"] == parentID || parentID == "" {
+			if err := populateElement(field, row, fhirPath, resultMap, searchParameterMap); err != nil {
+				return err
 			}
 		}
-	} else {
-		log.Debug().Msgf("No data found for field: %s", fieldName)
+	}
+
+	return nil
+}
+
+func populateElement(elem reflect.Value, row map[string]interface{}, fhirPath string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap) error {
+	err := populateStructFromRow(elem.Addr().Interface(), row)
+	if err != nil {
+		return err
+	}
+
+	currentID, _ := row["id"].(string)
+
+	return populateNestedElements(elem, resultMap, fhirPath, currentID, searchParameterMap)
+}
+
+func populateNestedElements(parentField reflect.Value, resultMap map[string][]map[string]interface{}, parentPath string, parentID string, searchParameterMap SearchParameterMap) error {
+	for i := 0; i < parentField.NumField(); i++ {
+		childField := parentField.Field(i)
+		childName := parentField.Type().Field(i).Name
+		childPath := extendFhirPath(parentPath, childName)
+
+		log.Debug().Msgf("Checking nested field: %s", childPath)
+
+		if hasDataForPath(resultMap, childPath) {
+			log.Debug().Msgf("Data found for nested field: %s", childPath)
+			if err := populateField(childField, resultMap, childPath, parentID, searchParameterMap); err != nil {
+				return err
+			}
+		} else {
+			log.Debug().Msgf("No data found for nested field: %s", childPath)
+		}
 	}
 	return nil
 }
 
-func populateField(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string, sg SearchFilterGroup) error {
+func populateField(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string, searchParameterMap SearchParameterMap) error {
 	log.Debug().Msgf("Populating field %s in populateField: %s and parentID", fieldName, parentID)
 	switch field.Kind() {
 	case reflect.Slice:
-		return populateSlice(field, resultMap, fieldName, parentID, sg)
+		return populateSlice(field, resultMap, fieldName, parentID, searchParameterMap)
 	case reflect.Struct:
-		return populateStruct(field, resultMap, fieldName, parentID, sg)
+		return populateStruct(field, resultMap, fieldName, parentID, searchParameterMap)
 	case reflect.Ptr:
 		if field.IsNil() {
 			field.Set(reflect.New(field.Type().Elem()))
 		}
-		return populateField(field.Elem(), resultMap, fieldName, parentID, sg)
+		return populateField(field.Elem(), resultMap, fieldName, parentID, searchParameterMap)
 	default:
 		return populateBasicType(field, resultMap, fieldName, parentID)
 	}
+}
+
+func populateSlice(field reflect.Value, resultMap map[string][]map[string]interface{}, fhirPath string, parentID string, searchParameterMap SearchParameterMap) error {
+	log.Debug().Msgf("Populating slice field: %s with parentID: %s", fhirPath, parentID)
+
+	rows, exists := resultMap[fhirPath]
+	if !exists {
+		log.Debug().Msgf("No data found for field: %s", fhirPath)
+		return nil
+	}
+
+	for _, row := range rows {
+		if row["parent_id"] == parentID || parentID == "" {
+			newElem := reflect.New(field.Type().Elem()).Elem()
+			if err := populateElement(newElem, row, fhirPath, resultMap, searchParameterMap); err != nil {
+				return err
+			}
+			field.Set(reflect.Append(field, newElem))
+		}
+	}
+
+	return nil
 }
 
 func populateBasicType(field reflect.Value, resultMap map[string][]map[string]interface{}, fullFieldName string, parentID string) error {
@@ -172,48 +206,6 @@ func populateBasicType(field reflect.Value, resultMap map[string][]map[string]in
 				}
 			}
 		}
-	}
-	return nil
-}
-
-func populateSlice(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string, sg SearchFilterGroup) error {
-	log.Debug().Msgf("Populating slice field: %s with parentID: %s", fieldName, parentID)
-	if data, ok := resultMap[fieldName]; ok {
-		for _, row := range data {
-			if row["parent_id"] == parentID || parentID == "" {
-				newElem := reflect.New(field.Type().Elem()).Elem()
-				err := populateStructFromRow(newElem.Addr().Interface(), row)
-				if err != nil {
-					return err
-				}
-
-				newElemID := ""
-				if idField := newElem.FieldByName("Id"); idField.IsValid() && idField.Kind() == reflect.Ptr && idField.Type().Elem().Kind() == reflect.String {
-					if idField.Elem().IsValid() {
-						newElemID = idField.Elem().String()
-					}
-				}
-
-				for i := 0; i < newElem.NumField(); i++ {
-					nestedField := newElem.Field(i)
-					nestedFieldName := newElem.Type().Field(i).Name
-					nestedFullFieldName := fieldName + "." + nestedFieldName
-					nestedFullFieldName = strings.ToLower(nestedFullFieldName)
-					nestedFullFieldName = strings.ToUpper(string(nestedFullFieldName[0])) + nestedFullFieldName[1:]
-
-					if fieldExistsInResultMap(resultMap, nestedFullFieldName) {
-						err := populateField(nestedField, resultMap, nestedFullFieldName, newElemID, sg)
-						if err != nil {
-							return err
-						}
-					}
-				}
-
-				field.Set(reflect.Append(field, newElem))
-			}
-		}
-	} else {
-		log.Debug().Msgf("No data found for field: %s", fieldName)
 	}
 	return nil
 }
@@ -350,19 +342,14 @@ func SetField(obj interface{}, name string, value interface{}) error {
 	return nil
 }
 
-func fieldExistsInResultMap(resultMap map[string][]map[string]interface{}, fieldName string) bool {
-	fieldName = strings.ToLower(fieldName)
-	fieldName = strings.ToUpper(string(fieldName[0])) + fieldName[1:]
-
-	if _, ok := resultMap[fieldName]; ok {
+func hasDataForPath(resultMap map[string][]map[string]interface{}, path string) bool {
+	if _, exists := resultMap[path]; exists {
 		return true
 	}
 
-	for key := range resultMap {
-		if strings.HasPrefix(key, fieldName+".") {
-			log.Debug().Msgf("Nested field exists in resultMap: %s", key)
-			return true
-		}
-	}
 	return false
+}
+
+func extendFhirPath(parentPath, childName string) string {
+	return fmt.Sprintf("%s.%s", parentPath, strings.ToLower(childName))
 }

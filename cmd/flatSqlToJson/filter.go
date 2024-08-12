@@ -10,11 +10,6 @@ import (
 )
 
 type SearchParameter struct {
-	FieldName string
-	Value     interface{}
-}
-
-type SearchFilter struct {
 	Code       string   `json:"code"`
 	Modifier   []string `json:"modifier,omitempty"`
 	Comparator string   `json:"comparator,omitempty"`
@@ -24,10 +19,10 @@ type SearchFilter struct {
 }
 
 // Key = Patient.identifier
-type SearchFilterGroup map[string]SearchFilter
+type SearchParameterMap map[string]SearchParameter
 
-func FilterField(field reflect.Value, sg SearchFilterGroup, fullFieldName string) error {
-	if searchFilter, ok := sg[fullFieldName]; ok {
+func FilterField(field reflect.Value, searchFilterMap SearchParameterMap, fullFieldName string) error {
+	if searchFilter, ok := searchFilterMap[fullFieldName]; ok {
 		log.Debug().Str("field", fullFieldName).Interface("searchFilter", searchFilter).Msg("Filtering field")
 
 		// Check if the field is set (non-zero value)
@@ -48,8 +43,8 @@ func FilterField(field reflect.Value, sg SearchFilterGroup, fullFieldName string
 	return nil
 }
 
-func filterTokenField(field reflect.Value, searchFilter SearchFilter, fullFieldName string) error {
-	system, code := parseFilter(searchFilter.Value)
+func filterTokenField(field reflect.Value, searchParameter SearchParameter, fullFieldName string) error {
+	system, code := parseFilter(searchParameter.Value)
 	log.Debug().Str("field", fullFieldName).Str("system", system).Str("code", code).Msg("Filtering token field")
 
 	switch field.Type().Name() {
@@ -75,7 +70,7 @@ func filterTokenField(field reflect.Value, searchFilter SearchFilter, fullFieldN
 	return nil
 }
 
-func filterDateField(field reflect.Value, searchFilter SearchFilter, fullFieldName string) error {
+func filterDateField(field reflect.Value, searchFilter SearchParameter, fullFieldName string) error {
 	// Parse the filter date (format: YYYYMMDD)
 	filterDate, err := time.Parse("20060102", searchFilter.Value)
 	if err != nil {
