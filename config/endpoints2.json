@@ -1,0 +1,35 @@
+{
+  "resourceType": "Patient", 
+  "sqlFile": "patient.sql",
+  "endpoint": [
+    {
+      "searchParameter": [
+        {
+          "code": "birthdate",
+          "modifier": ["not", "in"],
+          "comparator": "eg",
+          "value": "1974-12-25"
+        },
+        {
+          "code": "given",
+          "value": "john"
+        },
+        {
+          "code": "code",
+          "modifier": ["in"],
+          "value": "Elkenaam"
+        }
+      ],
+      "sqlFile": "patient2.sql"
+    },
+    {
+      "searchParameter": [
+        {
+          "code": "family",
+          "value": "Doe"
+        }
+      ],
+      "sqlFile": "sql2.sql"
+    }
+  ]
+}
