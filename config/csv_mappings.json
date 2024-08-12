@@ -20,7 +20,7 @@
         ]
       },
       {
-        "fieldName": "Patient.Name",
+        "fieldName": "Patient.name",
         "files": [
           {
             "fileName": "test/data/sim/patient.csv",
@@ -37,7 +37,7 @@
         ]
       },
       {
-        "fieldName": "Patient.Contact",
+        "fieldName": "Patient.contact",
         "files": [
           {
             "fileName": "test/data/sim/patient.csv",
@@ -53,7 +53,7 @@
         ]
       },
       {
-        "fieldName": "Patient.Contact.Name",
+        "fieldName": "Patient.contact.name",
         "files": [
           {
             "fileName": "test/data/sim/patient_contacts.csv",
@@ -70,7 +70,7 @@
         ]
       },
       {
-        "fieldName": "Patient.Contact.Relationship",
+        "fieldName": "Patient.contact.relationship",
         "files": [
           {
             "fileName": "test/data/sim/patient.csv",
