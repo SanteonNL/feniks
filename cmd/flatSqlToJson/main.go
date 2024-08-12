@@ -19,23 +19,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type SearchParameter struct {
-	FieldName string
-	Value     interface{}
-}
-
-type SearchFilter struct {
-	Code       string   `json:"code"`
-	Modifier   []string `json:"modifier,omitempty"`
-	Comparator string   `json:"comparator,omitempty"`
-	Value      string   `json:"value"`
-	Type       string   `json:"type,omitempty"`
-	Expression string
-}
-
-// Key = Patient.identifier
-type SearchFilterGroup map[string]SearchFilter
-
 func main() {
 	startTime := time.Now()
 
@@ -109,6 +92,7 @@ func ExtractAndMapData(ds DataSource, s interface{}, sg SearchFilterGroup, logge
 	v := reflect.ValueOf(s).Elem()
 	return populateStruct(v, data, "", "", sg)
 }
+
 func populateStruct(field reflect.Value, resultMap map[string][]map[string]interface{}, fieldName string, parentID string, sg SearchFilterGroup) error {
 	if fieldName == "" {
 		fieldName = field.Type().Name()

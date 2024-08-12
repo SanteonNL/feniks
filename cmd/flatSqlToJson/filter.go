@@ -9,6 +9,23 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type SearchParameter struct {
+	FieldName string
+	Value     interface{}
+}
+
+type SearchFilter struct {
+	Code       string   `json:"code"`
+	Modifier   []string `json:"modifier,omitempty"`
+	Comparator string   `json:"comparator,omitempty"`
+	Value      string   `json:"value"`
+	Type       string   `json:"type,omitempty"`
+	Expression string
+}
+
+// Key = Patient.identifier
+type SearchFilterGroup map[string]SearchFilter
+
 func FilterField(field reflect.Value, sg SearchFilterGroup, fullFieldName string) error {
 	if searchFilter, ok := sg[fullFieldName]; ok {
 		log.Debug().Str("field", fullFieldName).Interface("searchFilter", searchFilter).Msg("Filtering field")
