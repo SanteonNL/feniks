@@ -149,7 +149,7 @@ func populateSlice(field reflect.Value, rows []map[string]interface{}, fieldName
 				anyElementPassed = true
 				log.Debug().
 					Str("field", fieldName).
-					Msg("Element passed filter, continuing slice population")
+					Msg("Slice element passed filter, continuing slice population")
 			}
 
 			// Always add the element to the slice, regardless of filter result
@@ -359,26 +359,32 @@ func SetField(obj interface{}, name string, value interface{}) error {
 
 	return nil
 }
-
 func applyFilter(field reflect.Value, fhirPath string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	if searchParameter, ok := searchParameterMap[fhirPath]; ok {
-		if field.Kind() == reflect.Slice {
-			// For slices, we delegate to populateSlice which now handles the filtering
-			return &FilterResult{Passed: true}, nil
-		}
-
-		filterResult, err := FilterField(field, searchParameter, fhirPath, log)
-		if err != nil {
-			return nil, err
-		}
+	searchParameter, ok := searchParameterMap[fhirPath]
+	if !ok {
 		log.Debug().
 			Str("field", fhirPath).
-			Bool("passed", filterResult.Passed).
-			Msg("Apply filter result")
-		if !filterResult.Passed {
-			return &FilterResult{Passed: false, Message: fmt.Sprintf("Field filtered out: %s", fhirPath)}, nil
-		}
+			Msg("No filter found for fhirPath")
+		return &FilterResult{Passed: true, Message: fmt.Sprintf("No filter defined for: %s", fhirPath)}, nil
 	}
+
+	if field.Kind() == reflect.Slice {
+		// For slices, we delegate to populateSlice which now handles the filtering
+		return &FilterResult{Passed: true}, nil
+	}
+
+	filterResult, err := FilterField(field, searchParameter, fhirPath, log)
+	if err != nil {
+		return nil, err
+	}
+	log.Debug().
+		Str("field", fhirPath).
+		Bool("passed", filterResult.Passed).
+		Msg("Apply filter result")
+	if !filterResult.Passed {
+		return &FilterResult{Passed: false, Message: fmt.Sprintf("Field filtered out: %s", fhirPath)}, nil
+	}
+
 	return &FilterResult{Passed: true}, nil
 }
 

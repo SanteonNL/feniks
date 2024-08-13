@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type SearchParameter struct {
@@ -87,7 +86,7 @@ func filterTokenField(field reflect.Value, searchParameter SearchParameter, fhir
 
 	switch field.Type().Name() {
 	case "Identifier":
-		return matchesIdentifierFilter(field, system, code, fhirPath)
+		return matchesIdentifierFilter(field, system, code, fhirPath, log)
 	//case "CodeableConcept":
 	// 	return matchesCodeableConceptFilter(field, system, code, fhirPath)
 	// case "Coding":
@@ -97,7 +96,7 @@ func filterTokenField(field reflect.Value, searchParameter SearchParameter, fhir
 	}
 }
 
-func matchesIdentifierFilter(v reflect.Value, system, code, fhirPath string) (*FilterResult, error) {
+func matchesIdentifierFilter(v reflect.Value, system, code, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
 	systemField := v.FieldByName("System")
 	valueField := v.FieldByName("Value")
 
@@ -110,10 +109,11 @@ func matchesIdentifierFilter(v reflect.Value, system, code, fhirPath string) (*F
 
 	matches := (system == "" || systemValue == system) && valueValue == code
 	log.Debug().
+		Str("field", fhirPath).
 		Str("fieldSystem", systemValue).
 		Str("fieldValue", valueValue).
 		Str("filterSystem", system).
-		Str("filterCode", code).
+		Str("filterValue", code).
 		Bool("matches", matches).
 		Msg("Comparing identifier")
 
