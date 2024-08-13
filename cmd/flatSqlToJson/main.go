@@ -15,17 +15,16 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 func main() {
 	startTime := time.Now()
-	l := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) { w.Out = os.Stdout })).With().Timestamp().Caller().Logger()
-	l.Debug().Msg("Starting flatSqlToJson")
+	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) { w.Out = os.Stdout })).With().Timestamp().Caller().Logger()
+	log.Debug().Msg("Starting fenix")
 
 	db, err := sqlx.Connect("postgres", "postgres://postgres:mysecretpassword@localhost:5432/tsl_employee?sslmode=disable")
 	if err != nil {
-		l.Fatal().Err(err).Msg("Failed to connect to the database")
+		log.Fatal().Err(err).Msg("Failed to connect to the database")
 	}
 	defer db.Close()
 
@@ -36,19 +35,19 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to read query file")
 	}
 	query := string(queryBytes)
-	dataSource := NewSQLDataSource(db, query)
+	dataSource := NewSQLDataSource(db, query, log)
 
 	// Set up search parameters
 	searchParameterMap := SearchParameterMap{
 		"Patient.identifier": SearchParameter{
 			Code:  "identifier",
 			Type:  "token",
-			Value: "https://santeon.nl|12sdf3",
+			Value: "https://santeon.nl|123",
 		},
 	}
 
 	// Process data
-	patient, filterMessage, err := ProcessDataSource(dataSource, searchParameterMap, log.Logger)
+	patient, filterMessage, err := ProcessDataSource(dataSource, searchParameterMap, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to process data source")
 	}
@@ -68,20 +67,20 @@ func main() {
 
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
-	l.Debug().Msgf("Execution time: %s", duration)
+	log.Debug().Msgf("Execution time: %s", duration)
 }
 
-func ProcessDataSource(ds DataSource, searchParameterMap SearchParameterMap, logger zerolog.Logger) (*fhir.Patient, string, error) {
+func ProcessDataSource(ds DataSource, searchParameterMap SearchParameterMap, log zerolog.Logger) (*fhir.Patient, string, error) {
 	data, err := ds.Read()
 	if err != nil {
 		return nil, "", err
 	}
-	logger.Debug().Interface("rawData", data).Msg("Data before mapping")
+	log.Debug().Interface("dataMap", data).Msg("Flat data before mapping to FHIR")
 
 	patient := &fhir.Patient{}
 	v := reflect.ValueOf(patient).Elem()
 
-	filterResult, err := populateStruct(v, data, "", "", searchParameterMap)
+	filterResult, err := populateStruct(v, data, "", "", searchParameterMap, log)
 	if err != nil {
 		return nil, "", err
 	}
@@ -93,12 +92,12 @@ func ProcessDataSource(ds DataSource, searchParameterMap SearchParameterMap, log
 	return patient, "", nil
 }
 
-func populateStruct(field reflect.Value, resultMap map[string][]map[string]interface{}, fhirPath string, parentID string, searchParameterMap SearchParameterMap) (*FilterResult, error) {
+func populateStruct(field reflect.Value, resultMap map[string][]map[string]interface{}, fhirPath string, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	if fhirPath == "" {
 		fhirPath = field.Type().Name()
 	}
 
-	filterResult, err := populateField(field, resultMap, fhirPath, parentID, searchParameterMap)
+	filterResult, err := populateField(field, resultMap, fhirPath, parentID, searchParameterMap, log)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +108,7 @@ func populateStruct(field reflect.Value, resultMap map[string][]map[string]inter
 	return &FilterResult{Passed: true}, nil
 }
 
-func populateField(field reflect.Value, resultMap map[string][]map[string]interface{}, fhirPath string, parentID string, searchParameterMap SearchParameterMap) (*FilterResult, error) {
+func populateField(field reflect.Value, resultMap map[string][]map[string]interface{}, fhirPath string, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	log.Debug().Str("field", fhirPath).Msg("Populating field")
 	rows, exists := resultMap[fhirPath]
 	if !exists {
@@ -119,29 +118,29 @@ func populateField(field reflect.Value, resultMap map[string][]map[string]interf
 
 	switch field.Kind() {
 	case reflect.Slice:
-		return populateSlice(field, rows, fhirPath, parentID, resultMap, searchParameterMap)
+		return populateSlice(field, rows, fhirPath, parentID, resultMap, searchParameterMap, log)
 	case reflect.Struct:
-		return populateStructFields(field, rows, fhirPath, parentID, resultMap, searchParameterMap)
+		return populateStructFields(field, rows, fhirPath, parentID, resultMap, searchParameterMap, log)
 	case reflect.Ptr:
 		if field.IsNil() {
 			field.Set(reflect.New(field.Type().Elem()))
 		}
-		return populateField(field.Elem(), resultMap, fhirPath, parentID, searchParameterMap)
+		return populateField(field.Elem(), resultMap, fhirPath, parentID, searchParameterMap, log)
 	default:
-		return populateBasicType(field, rows, fhirPath, parentID, searchParameterMap)
+		return populateBasicType(field, rows, fhirPath, parentID, searchParameterMap, log)
 	}
 }
 
-func populateSlice(field reflect.Value, rows []map[string]interface{}, fieldName string, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap) (*FilterResult, error) {
+func populateSlice(field reflect.Value, rows []map[string]interface{}, fieldName string, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	anyElementPassed := false
 	for _, row := range rows {
 		if row["parent_id"] == parentID || parentID == "" {
 			elem := reflect.New(field.Type().Elem()).Elem()
-			if err := populateElement(elem, row, fieldName, resultMap, searchParameterMap); err != nil {
+			if err := populateElement(elem, row, fieldName, resultMap, searchParameterMap, log); err != nil {
 				return nil, err
 			}
 
-			filterResult, err := applyFilter(elem, fieldName, searchParameterMap)
+			filterResult, err := applyFilter(elem, fieldName, searchParameterMap, log)
 			if err != nil {
 				return nil, err
 			}
@@ -165,14 +164,14 @@ func populateSlice(field reflect.Value, rows []map[string]interface{}, fieldName
 	return &FilterResult{Passed: false, Message: fmt.Sprintf("No elements in slice passed filter: %s", fieldName)}, nil
 }
 
-func populateStructFields(field reflect.Value, rows []map[string]interface{}, fieldName string, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap) (*FilterResult, error) {
+func populateStructFields(field reflect.Value, rows []map[string]interface{}, fieldName string, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	for _, row := range rows {
 		if row["parent_id"] == parentID || parentID == "" {
-			if err := populateElement(field, row, fieldName, resultMap, searchParameterMap); err != nil {
+			if err := populateElement(field, row, fieldName, resultMap, searchParameterMap, log); err != nil {
 				return nil, err
 			}
 
-			filterResult, err := applyFilter(field, fieldName, searchParameterMap)
+			filterResult, err := applyFilter(field, fieldName, searchParameterMap, log)
 			if err != nil {
 				return nil, err
 			}
@@ -186,23 +185,23 @@ func populateStructFields(field reflect.Value, rows []map[string]interface{}, fi
 	return &FilterResult{Passed: true}, nil
 }
 
-func populateElement(elem reflect.Value, row map[string]interface{}, fieldName string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap) error {
+func populateElement(elem reflect.Value, row map[string]interface{}, fieldName string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
 	if err := populateStructFromRow(elem.Addr().Interface(), row); err != nil {
 		return err
 	}
 
 	currentID, _ := row["id"].(string)
-	return populateNestedElements(elem, resultMap, fieldName, currentID, searchParameterMap)
+	return populateNestedElements(elem, resultMap, fieldName, currentID, searchParameterMap, log)
 }
 
-func populateNestedElements(parentField reflect.Value, resultMap map[string][]map[string]interface{}, parentPath string, parentID string, searchParameterMap SearchParameterMap) error {
+func populateNestedElements(parentField reflect.Value, resultMap map[string][]map[string]interface{}, parentPath string, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
 	for i := 0; i < parentField.NumField(); i++ {
 		childField := parentField.Field(i)
 		childName := parentField.Type().Field(i).Name
 		childPath := fmt.Sprintf("%s.%s", parentPath, strings.ToLower(childName))
 
 		if hasDataForPath(resultMap, childPath) {
-			filterResult, err := populateField(childField, resultMap, childPath, parentID, searchParameterMap)
+			filterResult, err := populateField(childField, resultMap, childPath, parentID, searchParameterMap, log)
 			if err != nil {
 				return err
 			}
@@ -213,7 +212,7 @@ func populateNestedElements(parentField reflect.Value, resultMap map[string][]ma
 	}
 	return nil
 }
-func populateBasicType(field reflect.Value, rows []map[string]interface{}, fieldName string, parentID string, searchParameterMap SearchParameterMap) (*FilterResult, error) {
+func populateBasicType(field reflect.Value, rows []map[string]interface{}, fieldName string, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	for _, row := range rows {
 		if row["parent_id"] == parentID || parentID == "" {
 			for key, value := range row {
@@ -221,7 +220,7 @@ func populateBasicType(field reflect.Value, rows []map[string]interface{}, field
 					if err := SetField(field.Addr().Interface(), fieldName, value); err != nil {
 						return nil, err
 					}
-					return applyFilter(field, fieldName, searchParameterMap)
+					return applyFilter(field, fieldName, searchParameterMap, log)
 				}
 			}
 		}
@@ -361,14 +360,14 @@ func SetField(obj interface{}, name string, value interface{}) error {
 	return nil
 }
 
-func applyFilter(field reflect.Value, fhirPath string, searchParameterMap SearchParameterMap) (*FilterResult, error) {
+func applyFilter(field reflect.Value, fhirPath string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	if searchParameter, ok := searchParameterMap[fhirPath]; ok {
 		if field.Kind() == reflect.Slice {
 			// For slices, we delegate to populateSlice which now handles the filtering
 			return &FilterResult{Passed: true}, nil
 		}
 
-		filterResult, err := FilterField(field, searchParameter, fhirPath)
+		filterResult, err := FilterField(field, searchParameter, fhirPath, log)
 		if err != nil {
 			return nil, err
 		}

@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 )
 
 type DataSource interface {
@@ -18,12 +18,14 @@ type DataSource interface {
 type SQLDataSource struct {
 	db    *sqlx.DB
 	query string
+	log   zerolog.Logger
 }
 
-func NewSQLDataSource(db *sqlx.DB, query string) *SQLDataSource {
+func NewSQLDataSource(db *sqlx.DB, query string, log zerolog.Logger) *SQLDataSource {
 	return &SQLDataSource{
 		db:    db,
 		query: query,
+		log:   log,
 	}
 }
 
@@ -124,7 +126,7 @@ func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
 	resultSetCount := 0
 	for {
 		resultSetCount++
-		log.Debug().Int("resultSet", resultSetCount).Msg("Processing result set")
+		//log.Debug().Int("resultSet", resultSetCount).Msg("Processing result set")
 
 		rowCount := 0
 		for rows.Next() {
@@ -135,7 +137,7 @@ func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
 				return nil, fmt.Errorf("error scanning row: %w", err)
 			}
 
-			log.Debug().Int("resultSet", resultSetCount).Int("row", rowCount).Interface("row", row).Msg("Row from SQL query")
+			//log.Debug().Int("resultSet", resultSetCount).Int("row", rowCount).Interface("row", row).Msg("Row from SQL query")
 
 			// Remove NULL values
 			for key, value := range row {
@@ -178,7 +180,7 @@ func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
 			return nil, fmt.Errorf("error iterating over rows in result set %d: %w", resultSetCount, err)
 		}
 
-		log.Debug().Int("resultSet", resultSetCount).Int("rowCount", rowCount).Msg("Finished processing result set")
+		//s.log.Debug().Int("rowCount", rowCount).Msg("Finished processing result set")
 
 		// Move to the next result set
 		if !rows.NextResultSet() {
@@ -186,7 +188,7 @@ func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
 		}
 	}
 
-	log.Debug().Int("resultSets", resultSetCount).Interface("result", result).Msg("Data from SQL query")
+	//s.log.Debug().Interface("result", result).Msg("Data from SQL query")
 	return result, nil
 }
 func NewCSVDataSource(filePath string, mapper *CSVMapper) *CSVDataSource {

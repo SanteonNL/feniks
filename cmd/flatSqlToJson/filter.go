@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -26,8 +27,7 @@ type FilterResult struct {
 	Message string
 }
 
-func FilterField(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
-	log.Debug().Str("field", fhirPath).Interface("searchParameter", searchParameter).Msg("Filtering field")
+func FilterField(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
 
 	if field.IsZero() {
 		log.Debug().Str("field", fhirPath).Msg("Field is already zero value, skipping filtering")
@@ -36,22 +36,22 @@ func FilterField(field reflect.Value, searchParameter SearchParameter, fhirPath 
 
 	switch field.Kind() {
 	case reflect.Slice:
-		return filterSlice(field, searchParameter, fhirPath)
+		return filterSlice(field, searchParameter, fhirPath, log)
 	case reflect.Struct:
-		return filterStruct(field, searchParameter, fhirPath)
+		return filterStruct(field, searchParameter, fhirPath, log)
 	case reflect.Ptr:
 		if field.IsNil() {
 			return &FilterResult{Passed: true}, nil
 		}
-		return FilterField(field.Elem(), searchParameter, fhirPath)
+		return FilterField(field.Elem(), searchParameter, fhirPath, log)
 	default:
-		return filterBasicType(field, searchParameter, fhirPath)
+		return filterBasicType(field, searchParameter, fhirPath, log)
 	}
 }
 
-func filterSlice(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
+func filterSlice(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
 	for i := 0; i < field.Len(); i++ {
-		result, err := FilterField(field.Index(i), searchParameter, fhirPath)
+		result, err := FilterField(field.Index(i), searchParameter, fhirPath, log)
 		if err != nil {
 			return nil, err
 		}
@@ -62,14 +62,14 @@ func filterSlice(field reflect.Value, searchParameter SearchParameter, fhirPath 
 	return &FilterResult{Passed: false, Message: fmt.Sprintf("No elements in slice passed filter: %s", fhirPath)}, nil
 }
 
-func filterStruct(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
+func filterStruct(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
 	switch field.Type().Name() {
 	case "Identifier", "CodeableConcept", "Coding":
-		return filterTokenField(field, searchParameter, fhirPath)
+		return filterTokenField(field, searchParameter, fhirPath, log)
 	default:
 		// For other structs, we might want to check nested fields
 		for i := 0; i < field.NumField(); i++ {
-			result, err := FilterField(field.Field(i), searchParameter, fmt.Sprintf("%s.%s", fhirPath, field.Type().Field(i).Name))
+			result, err := FilterField(field.Field(i), searchParameter, fmt.Sprintf("%s.%s", fhirPath, field.Type().Field(i).Name), log)
 			if err != nil {
 				return nil, err
 			}
@@ -81,7 +81,7 @@ func filterStruct(field reflect.Value, searchParameter SearchParameter, fhirPath
 	}
 }
 
-func filterTokenField(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
+func filterTokenField(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
 	system, code := parseFilter(searchParameter.Value)
 	log.Debug().Str("field", fhirPath).Str("system", system).Str("code", code).Msg("Filtering token field")
 
@@ -123,7 +123,7 @@ func matchesIdentifierFilter(v reflect.Value, system, code, fhirPath string) (*F
 	return &FilterResult{Passed: false, Message: fmt.Sprintf("Identifier did not match for field %s", fhirPath)}, nil
 }
 
-func filterBasicType(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
+func filterBasicType(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
 	// Implement basic type filtering (e.g., string, int, etc.) if needed
 	// For now, we'll just pass all basic types
 	return &FilterResult{Passed: true}, nil
