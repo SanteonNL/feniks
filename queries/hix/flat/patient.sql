@@ -43,7 +43,7 @@ SELECT
     id as parent_id,
     null as birthDate,
     'https://santeon.nl' as system,
-    id as value
+    '123456' as value
 FROM
     names
 UNION ALL

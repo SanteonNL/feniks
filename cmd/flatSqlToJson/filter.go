@@ -21,97 +21,149 @@ type SearchParameter struct {
 // Key = Patient.identifier
 type SearchParameterMap map[string]SearchParameter
 
-func FilterField(field reflect.Value, searchFilterMap SearchParameterMap, fullFieldName string) error {
-	if searchFilter, ok := searchFilterMap[fullFieldName]; ok {
-		log.Debug().Str("field", fullFieldName).Interface("searchFilter", searchFilter).Msg("Filtering field")
-
-		// Check if the field is set (non-zero value)
-		if field.IsZero() {
-			log.Debug().Str("field", fullFieldName).Msg("Field is already zero value, skipping filtering")
-			return nil
-		}
-
-		switch searchFilter.Type {
-		case "token":
-			return filterTokenField(field, searchFilter, fullFieldName)
-		case "date":
-			return filterDateField(field, searchFilter, fullFieldName)
-		default:
-			log.Warn().Str("field", fullFieldName).Str("type", searchFilter.Type).Msg("Unsupported filter type")
-		}
-	}
-	return nil
+type FilterResult struct {
+	Passed  bool
+	Message string
 }
 
-func filterTokenField(field reflect.Value, searchParameter SearchParameter, fullFieldName string) error {
+func FilterField(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
+	log.Debug().Str("field", fhirPath).Interface("searchParameter", searchParameter).Msg("Filtering field")
+
+	if field.IsZero() {
+		log.Debug().Str("field", fhirPath).Msg("Field is already zero value, skipping filtering")
+		return &FilterResult{Passed: true}, nil
+	}
+
+	switch field.Kind() {
+	case reflect.Slice:
+		return filterSlice(field, searchParameter, fhirPath)
+	case reflect.Struct:
+		return filterStruct(field, searchParameter, fhirPath)
+	case reflect.Ptr:
+		if field.IsNil() {
+			return &FilterResult{Passed: true}, nil
+		}
+		return FilterField(field.Elem(), searchParameter, fhirPath)
+	default:
+		return filterBasicType(field, searchParameter, fhirPath)
+	}
+}
+
+func filterSlice(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
+	for i := 0; i < field.Len(); i++ {
+		result, err := FilterField(field.Index(i), searchParameter, fhirPath)
+		if err != nil {
+			return nil, err
+		}
+		if result.Passed {
+			return result, nil // If any element passes, the whole slice passes
+		}
+	}
+	return &FilterResult{Passed: false, Message: fmt.Sprintf("No elements in slice passed filter: %s", fhirPath)}, nil
+}
+
+func filterStruct(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
+	switch field.Type().Name() {
+	case "Identifier", "CodeableConcept", "Coding":
+		return filterTokenField(field, searchParameter, fhirPath)
+	default:
+		// For other structs, we might want to check nested fields
+		for i := 0; i < field.NumField(); i++ {
+			result, err := FilterField(field.Field(i), searchParameter, fmt.Sprintf("%s.%s", fhirPath, field.Type().Field(i).Name))
+			if err != nil {
+				return nil, err
+			}
+			if result.Passed {
+				return result, nil
+			}
+		}
+		return &FilterResult{Passed: false, Message: fmt.Sprintf("No fields in struct passed filter: %s", fhirPath)}, nil
+	}
+}
+
+func filterTokenField(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
 	system, code := parseFilter(searchParameter.Value)
-	log.Debug().Str("field", fullFieldName).Str("system", system).Str("code", code).Msg("Filtering token field")
+	log.Debug().Str("field", fhirPath).Str("system", system).Str("code", code).Msg("Filtering token field")
 
 	switch field.Type().Name() {
 	case "Identifier":
-		if !fieldMatchesIdentifierFilter(field, system, code) {
-			log.Debug().Str("field", fullFieldName).Msg("Field does not match Identifier filter, setting to zero value")
-			setFieldToZeroIfNotEmpty(field)
-		}
-	case "CodeableConcept":
-		if !fieldMatchesCodeableConceptFilter(field, system, code) {
-			log.Debug().Str("field", fullFieldName).Msg("Field does not match CodeableConcept filter, setting to zero value")
-			setFieldToZeroIfNotEmpty(field)
-		}
-	case "Coding":
-		if !fieldMatchesCodingFilter(field, system, code) {
-			log.Debug().Str("field", fullFieldName).Msg("Field does not match Coding filter, setting to zero value")
-			setFieldToZeroIfNotEmpty(field)
-		}
+		return matchesIdentifierFilter(field, system, code, fhirPath)
+	//case "CodeableConcept":
+	// 	return matchesCodeableConceptFilter(field, system, code, fhirPath)
+	// case "Coding":
+	// 	return matchesCodingFilter(field, system, code, fhirPath)
 	default:
-		log.Warn().Str("field", fullFieldName).Str("type", field.Type().Name()).Msg("Unsupported token field type")
+		return &FilterResult{Passed: false, Message: fmt.Sprintf("Unsupported token field type: %s for field %s", field.Type().Name(), fhirPath)}, nil
 	}
-
-	return nil
 }
 
-func filterDateField(field reflect.Value, searchFilter SearchParameter, fullFieldName string) error {
-	// Parse the filter date (format: YYYYMMDD)
-	filterDate, err := time.Parse("20060102", searchFilter.Value)
+func matchesIdentifierFilter(v reflect.Value, system, code, fhirPath string) (*FilterResult, error) {
+	systemField := v.FieldByName("System")
+	valueField := v.FieldByName("Value")
+
+	if !systemField.IsValid() || !valueField.IsValid() {
+		return &FilterResult{Passed: false, Message: fmt.Sprintf("Invalid Identifier structure for field %s", fhirPath)}, nil
+	}
+
+	systemValue := getStringValue(systemField)
+	valueValue := getStringValue(valueField)
+
+	matches := (system == "" || systemValue == system) && valueValue == code
+	log.Debug().
+		Str("fieldSystem", systemValue).
+		Str("fieldValue", valueValue).
+		Str("filterSystem", system).
+		Str("filterCode", code).
+		Bool("matches", matches).
+		Msg("Comparing identifier")
+
+	if matches {
+		return &FilterResult{Passed: true}, nil
+	}
+	return &FilterResult{Passed: false, Message: fmt.Sprintf("Identifier did not match for field %s", fhirPath)}, nil
+}
+
+func filterBasicType(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
+	// Implement basic type filtering (e.g., string, int, etc.) if needed
+	// For now, we'll just pass all basic types
+	return &FilterResult{Passed: true}, nil
+}
+
+func getStringValue(field reflect.Value) string {
+	if field.Kind() == reflect.Ptr {
+		if field.IsNil() {
+			return ""
+		}
+		field = field.Elem()
+	}
+	return field.String()
+}
+
+func filterDateField(field reflect.Value, searchParameter SearchParameter, fhirPath string) (bool, error) {
+	filterDate, err := time.Parse("2006-01-02", searchParameter.Value)
 	if err != nil {
-		return fmt.Errorf("invalid date format for field %s: %v", fullFieldName, err)
+		return false, fmt.Errorf("invalid date format for field %s: %v", fhirPath, err)
 	}
 
 	fieldTime, err := getTimeFromField(field)
 	if err != nil {
-		return fmt.Errorf("error getting time from field %s: %v", fullFieldName, err)
+		return false, fmt.Errorf("error getting time from field %s: %v", fhirPath, err)
 	}
 
-	// Compare dates ignoring the time component
-	filterDate = time.Date(filterDate.Year(), filterDate.Month(), filterDate.Day(), 0, 0, 0, 0, time.UTC)
-	fieldDate := time.Date(fieldTime.Year(), fieldTime.Month(), fieldTime.Day(), 0, 0, 0, 0, time.UTC)
-
-	switch searchFilter.Comparator {
+	switch searchParameter.Comparator {
 	case "eq", "":
-		if !fieldDate.Equal(filterDate) {
-			setFieldToZeroIfNotEmpty(field)
-		}
+		return fieldTime.Equal(filterDate), nil
 	case "gt":
-		if !fieldDate.After(filterDate) {
-			setFieldToZeroIfNotEmpty(field)
-		}
+		return fieldTime.After(filterDate), nil
 	case "lt":
-		if !fieldDate.Before(filterDate) {
-			setFieldToZeroIfNotEmpty(field)
-		}
+		return fieldTime.Before(filterDate), nil
 	case "ge":
-		if fieldDate.Before(filterDate) {
-			setFieldToZeroIfNotEmpty(field)
-		}
+		return !fieldTime.Before(filterDate), nil
 	case "le":
-		if fieldDate.After(filterDate) {
-			setFieldToZeroIfNotEmpty(field)
-		}
+		return !fieldTime.After(filterDate), nil
 	default:
-		return fmt.Errorf("unsupported date comparator for field %s: %s", fullFieldName, searchFilter.Comparator)
+		return false, fmt.Errorf("unsupported date comparator for field %s: %s", fhirPath, searchParameter.Comparator)
 	}
-
-	return nil
 }
 
 func setFieldToZeroIfNotEmpty(field reflect.Value) {
@@ -126,117 +178,6 @@ func getTimeFromField(field reflect.Value) (time.Time, error) {
 	dateString := *field.Interface().(*string)
 	return time.Parse(time.RFC3339, dateString)
 
-}
-
-func fieldMatchesCodeableConceptFilter(field reflect.Value, system, code string) bool {
-	coding := field.FieldByName("Coding")
-	if !coding.IsValid() || coding.IsNil() {
-		return false
-	}
-
-	for i := 0; i < coding.Len(); i++ {
-		if matchesCodingValues(coding.Index(i), system, code) {
-			return true
-		}
-	}
-	return false
-}
-
-func fieldMatchesCodingFilter(field reflect.Value, system, code string) bool {
-	return matchesCodingValues(field, system, code)
-}
-
-func matchesCodingValues(v reflect.Value, system, code string) bool {
-	systemField := v.FieldByName("System")
-	codeField := v.FieldByName("Code")
-
-	if !systemField.IsValid() || !codeField.IsValid() {
-		return false
-	}
-
-	if systemField.Kind() == reflect.Ptr {
-		if systemField.IsNil() {
-			return false
-		}
-		systemField = systemField.Elem()
-	}
-
-	if codeField.Kind() == reflect.Ptr {
-		if codeField.IsNil() {
-			return false
-		}
-		codeField = codeField.Elem()
-	}
-
-	log.Debug().Str("system", systemField.String()).Str("code", codeField.String()).Msg("Matching coding values")
-
-	return (system == "" || systemField.String() == system) && codeField.String() == code
-}
-
-func fieldMatchesIdentifierFilter(field reflect.Value, system, code string) bool {
-	if field.Kind() == reflect.Slice {
-		for i := 0; i < field.Len(); i++ {
-			if matchesIdentifierFilter(field.Index(i), system, code) {
-				return true
-			}
-		}
-	} else if field.Kind() == reflect.Struct {
-		return matchesIdentifierFilter(field, system, code)
-	}
-	return false
-}
-
-func matchesIdentifierFilter(v reflect.Value, system, code string) bool {
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return false
-		}
-		v = v.Elem()
-	}
-
-	if v.Kind() != reflect.Struct {
-		return false
-	}
-
-	identifierField := v.FieldByName("Identifier")
-	if identifierField.IsValid() && identifierField.Kind() == reflect.Slice {
-		for i := 0; i < identifierField.Len(); i++ {
-			coding := identifierField.Index(i)
-			if matchesIndentifierValues(coding, system, code) {
-				return true
-			}
-		}
-	} else {
-		return matchesIndentifierValues(v, system, code)
-	}
-
-	return false
-}
-func matchesIndentifierValues(v reflect.Value, system, code string) bool {
-	systemField := v.FieldByName("System")
-	codeField := v.FieldByName("Value")
-
-	if !systemField.IsValid() || !codeField.IsValid() {
-		return false
-	}
-
-	if systemField.Kind() == reflect.Ptr {
-		if systemField.IsNil() {
-			return false
-		}
-		systemField = systemField.Elem()
-	}
-
-	if codeField.Kind() == reflect.Ptr {
-		if codeField.IsNil() {
-			return false
-		}
-		codeField = codeField.Elem()
-	}
-
-	log.Debug().Str("system", systemField.String()).Str("code", codeField.String()).Msg("Matching identifier values")
-
-	return (system == "" || systemField.String() == system) && codeField.String() == code
 }
 
 func parseFilter(filter string) (string, string) {
