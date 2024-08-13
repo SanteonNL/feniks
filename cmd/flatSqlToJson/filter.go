@@ -129,16 +129,6 @@ func filterBasicType(field reflect.Value, searchParameter SearchParameter, fhirP
 	return &FilterResult{Passed: true}, nil
 }
 
-func getStringValue(field reflect.Value) string {
-	if field.Kind() == reflect.Ptr {
-		if field.IsNil() {
-			return ""
-		}
-		field = field.Elem()
-	}
-	return field.String()
-}
-
 func filterDateField(field reflect.Value, searchParameter SearchParameter, fhirPath string) (bool, error) {
 	filterDate, err := time.Parse("2006-01-02", searchParameter.Value)
 	if err != nil {

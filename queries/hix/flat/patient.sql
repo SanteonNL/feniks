@@ -5,7 +5,8 @@ WITH names AS (
         '' as parent_id,
         p.geboortedatum as birthDate,
         null as system,
-        null as value
+        null as value,
+        p.geslachtcode as gender
     FROM
         patient p
     WHERE
@@ -23,7 +24,8 @@ SELECT
     id as parent_id,
     null as birthDate,
     'https://santeon.nl' as system,
-    id as value
+    id as value,
+    null as gender
 FROM
     names
 UNION ALL
@@ -33,7 +35,8 @@ SELECT
     id as parent_id,
     null as birthDate,
     null as system,
-    null as value
+    null as value,
+    null as gender
 FROM
     names
 UNION ALL
@@ -43,17 +46,19 @@ SELECT
     id as parent_id,
     null as birthDate,
     'https://santeon.nl' as system,
-    '123456' as value
+    '123456' as value,
+    null as gender
 FROM
     names
 UNION ALL
 SELECT
-    'Patient.identifier.type' as field_name,
-    '123435465',
+    'Patient.identifier.type' as field_nam,
+    '123435465' as id,
     '12345' as parent_id,
     null as birthDate,
     null as system,
-    null as value
+    null as value,
+    null as gender
 FROM
     names;
 

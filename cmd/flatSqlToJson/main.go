@@ -17,6 +17,70 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// ConceptMapperMap is a nested map structure for efficient lookups
+// The structure is: fhirPath -> sourceSystem -> sourceCode -> TargetCode
+type ConceptMapperMap map[string]map[string]map[string]TargetCode
+
+// TargetCode represents the mapped code in the target system
+type TargetCode struct {
+	System  string
+	Code    string
+	Display string
+}
+
+var globalConceptMaps ConceptMapperMap
+
+func initializeGenderConceptMap() {
+	globalConceptMaps = ConceptMapperMap{
+		"Patient.gender": {
+			"http://hl7.org/fhir/administrative-gender": {
+				"male": TargetCode{
+					System:  "http://snomed.info/sct",
+					Code:    "248153007",
+					Display: "Male",
+				},
+				"female": TargetCode{
+					System:  "http://snomed.info/sct",
+					Code:    "248152002",
+					Display: "Female",
+				},
+				"other": TargetCode{
+					System:  "http://snomed.info/sct",
+					Code:    "394743007",
+					Display: "Other",
+				},
+				"unknown": TargetCode{
+					System:  "http://snomed.info/sct",
+					Code:    "unknown",
+					Display: "Unknown",
+				},
+			},
+			"": { // For system-agnostic mappings
+				"M": TargetCode{
+					System:  "http://hl7.org/fhir/administrative-gender",
+					Code:    "male",
+					Display: "Male",
+				},
+				"F": TargetCode{
+					System:  "http://hl7.org/fhir/administrative-gender",
+					Code:    "female",
+					Display: "Female",
+				},
+				"O": TargetCode{
+					System:  "http://hl7.org/fhir/administrative-gender",
+					Code:    "other",
+					Display: "Other",
+				},
+				"U": TargetCode{
+					System:  "http://hl7.org/fhir/administrative-gender",
+					Code:    "unknown",
+					Display: "Unknown",
+				},
+			},
+		},
+	}
+}
+
 func main() {
 	startTime := time.Now()
 	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) { w.Out = os.Stdout })).With().Timestamp().Caller().Logger()
@@ -45,6 +109,9 @@ func main() {
 			Value: "https://santeon.nl|123",
 		},
 	}
+
+	// Initialize concept maps
+	initializeGenderConceptMap()
 
 	// Process data
 	patient, filterMessage, err := ProcessDataSource(dataSource, searchParameterMap, log)
@@ -186,7 +253,7 @@ func populateStructFields(field reflect.Value, rows []map[string]interface{}, fi
 }
 
 func populateElement(elem reflect.Value, row map[string]interface{}, fieldName string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
-	if err := populateStructFromRow(elem.Addr().Interface(), row); err != nil {
+	if err := populateStructFromRow(elem.Addr().Interface(), row, log); err != nil {
 		return err
 	}
 
@@ -217,7 +284,7 @@ func populateBasicType(field reflect.Value, rows []map[string]interface{}, field
 		if row["parent_id"] == parentID || parentID == "" {
 			for key, value := range row {
 				if strings.EqualFold(key, fieldName) {
-					if err := SetField(field.Addr().Interface(), fieldName, value); err != nil {
+					if err := SetField(field.Addr().Interface(), fieldName, value, log); err != nil {
 						return nil, err
 					}
 					return applyFilter(field, fieldName, searchParameterMap, log)
@@ -228,7 +295,7 @@ func populateBasicType(field reflect.Value, rows []map[string]interface{}, field
 	return &FilterResult{Passed: true}, nil
 }
 
-func populateStructFromRow(obj interface{}, row map[string]interface{}) error {
+func populateStructFromRow(obj interface{}, row map[string]interface{}, log zerolog.Logger) error {
 	v := reflect.ValueOf(obj).Elem()
 	t := v.Type()
 
@@ -238,7 +305,7 @@ func populateStructFromRow(obj interface{}, row map[string]interface{}) error {
 			fieldNameLower := strings.ToLower(field.Name)
 
 			if fieldNameLower == strings.ToLower(key) {
-				err := SetField(obj, field.Name, value)
+				err := SetField(obj, field.Name, value, log)
 				if err != nil {
 					return err
 				}
@@ -248,7 +315,7 @@ func populateStructFromRow(obj interface{}, row map[string]interface{}) error {
 	return nil
 }
 
-func SetField(obj interface{}, name string, value interface{}) error {
+func SetField(obj interface{}, name string, value interface{}, log zerolog.Logger) error {
 
 	structValue := reflect.ValueOf(obj)
 	if structValue.Kind() != reflect.Ptr || structValue.IsNil() {
@@ -281,6 +348,13 @@ func SetField(obj interface{}, name string, value interface{}) error {
 		}
 		unmarshalJSONMethod := field.MethodByName("UnmarshalJSON")
 		if unmarshalJSONMethod.IsValid() {
+			//Map value first
+			stringValue := getStringValue(reflect.ValueOf(value))
+			TargetCode, err := mapConceptCode(stringValue, "Patient.gender", log)
+			if err != nil {
+				return fmt.Errorf("failed to map concept code: %v", err)
+			}
+			value = TargetCode.Code
 			// Convert the value to JSON
 			jsonValue, err := json.Marshal(value)
 			if err != nil {
@@ -398,4 +472,24 @@ func hasDataForPath(resultMap map[string][]map[string]interface{}, path string) 
 
 func extendFhirPath(parentPath, childName string) string {
 	return fmt.Sprintf("%s.%s", parentPath, strings.ToLower(childName))
+}
+
+func mapConceptCode(value string, fhirPath string, log zerolog.Logger) (TargetCode, error) {
+	// Simple implementation without system handling
+	log.Debug().Str("fhirPath", fhirPath).Str("sourceCode", value).Msg("Mapping concept code")
+	if conceptMap, ok := globalConceptMaps[fhirPath]; ok {
+		if systemMap, ok := conceptMap[""]; ok {
+			if targetCode, ok := systemMap[value]; ok {
+				log.Debug().
+					Str("fhirPath", fhirPath).
+					Str("sourceCode", value).
+					Str("targetCode", targetCode.Code).
+					Msg("Applied concept mapping")
+				return targetCode, nil
+			}
+		}
+	}
+
+	// If no mapping found, return the original value
+	return TargetCode{Code: value}, nil
 }
