@@ -1,3 +1,15 @@
+-- Within fenix/ you can run the following command to create the database and tables:
+--     docker run --name [postgresCont] -e POSTGRES_PASSWORD=[mysecretpassword] -p [5432:5432] -v ${PWD}/test/data/sql/setup.sql:/docker-entrypoint-initdb.d/setup.sql -d postgres
+-- Give your own -name, password and port number
+-- This setup file is then mounted into the container's /docker-entrypoint-initdb.d/ directory.
+-- The container will run the setup.sql file when it starts up, creating the database and tables.
+-- Further information on how to run SELECT statements within postgres can be found in this tutioral:
+-- https://www.commandprompt.com/education/how-to-create-a-postgresql-database-in-docker/
+-- TODO: check how this is done in the let's GO projects
+
+CREATE DATABASE public;
+\connect public;
+
 CREATE TABLE public.patient (
     identificatienummer character varying(13),
     geslachtcode character varying(255),
