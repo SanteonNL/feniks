@@ -6,6 +6,12 @@
 -- Further information on how to run SELECT statements within postgres can be found in this tutioral:
 -- https://www.commandprompt.com/education/how-to-create-a-postgresql-database-in-docker/
 -- TODO: check how this is done in the let's GO projects
+-- After use you can stop and remove the container with these commands:
+--     docker stop [postgresCont]
+--     docker rm [postgresCont]
+-- You can also already put the -rm flag in the run command to remove the container after stopping it.
+-- TODO: Check how to automate this process
+
 
 CREATE DATABASE public;
 \connect public;
