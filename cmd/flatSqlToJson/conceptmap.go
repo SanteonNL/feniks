@@ -1,14 +1,3 @@
-// Idea:
-// Collect searchparameters from url
-// Haal elementen relevant voor conceptmapping eruit en map naar searchparameter struct (R4)
-// Valueset is belangrijk omdat die momenteel nog niet uit structure definition kan wroden gehaald;
-// want soms heeft Pacmed(?) een eigen valueset i.p.v. de R4 valueset
-// Ook belangrijp om fhir path te hebben om te weten waar een conceptmapping op van toepassing is
-// Plaats van conceptmapping is voor applyFilter, maar kan in geval van een code ook direct bij vullen al
-// Ergens in de conceptmap komt ook te staan voor welke ziekenhuis de conceptmap gledt, bijv.
-// version: organization=mst&versionNumber=1.0
-// Maar hoe relateert dat aan deels generieke, deels ziekenhuis specifieke conceptmaps?
-
 package main
 
 import (
@@ -18,6 +7,10 @@ import (
 
 	"github.com/SanteonNL/fenix/models/fhir" // for use of the conceptMap.go file
 )
+
+// Per resource:
+// - Mapping van FHIRPath naar Valueset
+// - Mapping van Valueset naar ConceptMap
 
 // Mapping van FHIRPath naar ValueSet
 // TODO: fill from resource structure definition (R4) or from searchparameter (url)
