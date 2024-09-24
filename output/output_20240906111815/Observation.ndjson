@@ -1,0 +1,2 @@
+{"id":"3","status":"registered","code":{},"effectiveDateTime":"2021-11-30T19:19:19","valueQuantity":{"id":"3","comparator":"\u003c","unit":"xxx"},"resourceType":"Observation"}
+{"id":"5","status":"registered","code":{},"effectiveDateTime":"2021-10-30T09:09:09","valueQuantity":{"id":"5","comparator":"\u003c","unit":"vier"},"resourceType":"Observation"}
