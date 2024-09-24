@@ -86,7 +86,7 @@ func main() {
 	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) { w.Out = os.Stdout })).With().Timestamp().Caller().Logger()
 	log.Debug().Msg("Starting fenix")
 
-	db, err := sqlx.Connect("postgres", "postgres://postgres:mysecretpassword@localhost:5432/tsl_employee?sslmode=disable")
+	db, err := sqlx.Connect("postgres", "postgres://postgres:mysecretpassword@localhost:5432/public?sslmode=disable")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to the database")
 	}
@@ -145,9 +145,9 @@ func ProcessDataSource(ds DataSource, searchParameterMap SearchParameterMap, log
 	log.Debug().Interface("dataMap", data).Msg("Flat data before mapping to FHIR")
 
 	patient := &fhir.Patient{}
-	v := reflect.ValueOf(patient).Elem()
+	patientStructValue := reflect.ValueOf(patient).Elem()
 
-	filterResult, err := populateStruct(v, data, "", "", searchParameterMap, log)
+	filterResult, err := populateResourceStruct("", patientStructValue, "", data, searchParameterMap, log)
 	if err != nil {
 		return nil, "", err
 	}
@@ -159,12 +159,13 @@ func ProcessDataSource(ds DataSource, searchParameterMap SearchParameterMap, log
 	return patient, "", nil
 }
 
-func populateStruct(field reflect.Value, resultMap map[string][]map[string]interface{}, fhirPath string, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	if fhirPath == "" {
-		fhirPath = field.Type().Name()
+func populateResourceStruct(name string, value reflect.Value, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	if name == "" {
+		name = value.Type().Name()
+		log.Debug().Str("Name", name).Msg("Populating resource struct")
 	}
 
-	filterResult, err := populateField(field, resultMap, fhirPath, parentID, searchParameterMap, log)
+	filterResult, err := determineType(name, value, parentID, resultMap, searchParameterMap, log)
 	if err != nil {
 		return nil, err
 	}
@@ -175,39 +176,49 @@ func populateStruct(field reflect.Value, resultMap map[string][]map[string]inter
 	return &FilterResult{Passed: true}, nil
 }
 
-func populateField(field reflect.Value, resultMap map[string][]map[string]interface{}, fhirPath string, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	log.Debug().Str("field", fhirPath).Msg("Populating field")
-	rows, exists := resultMap[fhirPath]
+func determineType(name string, value reflect.Value, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Str("Name", name).Msg("Determining type")
+	rows, exists := resultMap[name]
 	if !exists {
-		log.Debug().Msgf("No data found for field: %s", fhirPath)
+		log.Debug().Msgf("No data found for: %s", name)
 		return &FilterResult{Passed: true}, nil
 	}
 
-	switch field.Kind() {
+	switch value.Kind() {
 	case reflect.Slice:
-		return populateSlice(field, rows, fhirPath, parentID, resultMap, searchParameterMap, log)
+		log.Debug().Msgf("Type is slice")
+		// PopulateSlice handle slices of structs, slices of basic types like string, int, etc. are handled within SetField it seems.
+		// However, the patient resource does not contain slices of basic types, so this I am not sure if it works well if for example
+		// the resource humanName is filled directly as resource instead of as struct within resource. That contains several slices of strings.
+		// TODO: test this with a resource that contains slices of basic types.
+		return populateSlice(name, value, parentID, rows, resultMap, searchParameterMap, log)
 	case reflect.Struct:
-		return populateStructFields(field, rows, fhirPath, parentID, resultMap, searchParameterMap, log)
+		log.Debug().Str("Name", name).Msgf("Type is struct")
+		return populateStruct(name, value, parentID, rows, resultMap, searchParameterMap, log)
 	case reflect.Ptr:
-		if field.IsNil() {
-			field.Set(reflect.New(field.Type().Elem()))
+		log.Debug().Str("Name", name).Msgf("Type is pointer")
+		if value.IsNil() {
+			value.Set(reflect.New(value.Type().Elem()))
 		}
-		return populateField(field.Elem(), resultMap, fhirPath, parentID, searchParameterMap, log)
+		log.Debug().Str("Name", name).Msgf("Changed nil pointer to new instance of %s", value.Type().Elem())
+		return determineType(name, value.Elem(), parentID, resultMap, searchParameterMap, log)
 	default:
-		return populateBasicType(field, rows, fhirPath, parentID, searchParameterMap, log)
+		log.Debug().Str("Name", name).Msgf("Type is basic type")
+		return populateBasicType(name, value, parentID, rows, name, searchParameterMap, log)
 	}
 }
 
-func populateSlice(field reflect.Value, rows []map[string]interface{}, fieldName string, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func populateSlice(name string, value reflect.Value, parentID string, rows []map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Str("Name", name).Msg("Populating slice")
 	anyElementPassed := false
 	for _, row := range rows {
 		if row["parent_id"] == parentID || parentID == "" {
-			elem := reflect.New(field.Type().Elem()).Elem()
-			if err := populateElement(elem, row, fieldName, resultMap, searchParameterMap, log); err != nil {
+			elem := reflect.New(value.Type().Elem()).Elem()
+			if err := populateStructAndNestedFields(name, elem, row, resultMap, searchParameterMap, log); err != nil {
 				return nil, err
 			}
 
-			filterResult, err := applyFilter(elem, fieldName, searchParameterMap, log)
+			filterResult, err := applyFilter(elem, name, searchParameterMap, log)
 			if err != nil {
 				return nil, err
 			}
@@ -215,12 +226,12 @@ func populateSlice(field reflect.Value, rows []map[string]interface{}, fieldName
 			if filterResult.Passed {
 				anyElementPassed = true
 				log.Debug().
-					Str("field", fieldName).
+					Str("Name", name).
 					Msg("Slice element passed filter, continuing slice population")
 			}
 
 			// Always add the element to the slice, regardless of filter result
-			field.Set(reflect.Append(field, elem))
+			value.Set(reflect.Append(value, elem))
 		}
 	}
 
@@ -228,17 +239,18 @@ func populateSlice(field reflect.Value, rows []map[string]interface{}, fieldName
 		return &FilterResult{Passed: true}, nil
 	}
 
-	return &FilterResult{Passed: false, Message: fmt.Sprintf("No elements in slice passed filter: %s", fieldName)}, nil
+	return &FilterResult{Passed: false, Message: fmt.Sprintf("No elements in slice passed filter: %s", name)}, nil
 }
 
-func populateStructFields(field reflect.Value, rows []map[string]interface{}, fieldName string, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func populateStruct(name string, value reflect.Value, parentID string, rows []map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Str("Name", name).Msg("Populating struct")
 	for _, row := range rows {
 		if row["parent_id"] == parentID || parentID == "" {
-			if err := populateElement(field, row, fieldName, resultMap, searchParameterMap, log); err != nil {
+			if err := populateStructAndNestedFields(name, value, row, resultMap, searchParameterMap, log); err != nil {
 				return nil, err
 			}
 
-			filterResult, err := applyFilter(field, fieldName, searchParameterMap, log)
+			filterResult, err := applyFilter(value, name, searchParameterMap, log)
 			if err != nil {
 				return nil, err
 			}
@@ -252,23 +264,26 @@ func populateStructFields(field reflect.Value, rows []map[string]interface{}, fi
 	return &FilterResult{Passed: true}, nil
 }
 
-func populateElement(elem reflect.Value, row map[string]interface{}, fieldName string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
-	if err := populateStructFromRow(elem.Addr().Interface(), row, log); err != nil {
+// TODO nestedelements -> nested felds
+func populateStructAndNestedFields(name string, elem reflect.Value, row map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
+	log.Debug().Str("Name", name).Msg("Populating struct and nested fields")
+	if err := populateStructFields(name, elem.Addr().Interface(), row, log); err != nil {
 		return err
 	}
 
 	currentID, _ := row["id"].(string)
-	return populateNestedElements(elem, resultMap, fieldName, currentID, searchParameterMap, log)
+	return populateNestedFields(name, elem, resultMap, currentID, searchParameterMap, log)
 }
 
-func populateNestedElements(parentField reflect.Value, resultMap map[string][]map[string]interface{}, parentPath string, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
-	for i := 0; i < parentField.NumField(); i++ {
-		childField := parentField.Field(i)
-		childName := parentField.Type().Field(i).Name
-		childPath := fmt.Sprintf("%s.%s", parentPath, strings.ToLower(childName))
+func populateNestedFields(parentName string, parentValue reflect.Value, resultMap map[string][]map[string]interface{}, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
+	log.Debug().Msgf("Populating nested fields for %s", parentName)
+	for i := 0; i < parentValue.NumField(); i++ {
+		childValue := parentValue.Field(i)
+		childFieldName := parentValue.Type().Field(i).Name
+		childName := fmt.Sprintf("%s.%s", parentName, strings.ToLower(childFieldName))
 
-		if hasDataForPath(resultMap, childPath) {
-			filterResult, err := populateField(childField, resultMap, childPath, parentID, searchParameterMap, log)
+		if hasDataForPath(resultMap, childName) {
+			filterResult, err := determineType(childName, childValue, parentID, resultMap, searchParameterMap, log)
 			if err != nil {
 				return err
 			}
@@ -279,12 +294,16 @@ func populateNestedElements(parentField reflect.Value, resultMap map[string][]ma
 	}
 	return nil
 }
-func populateBasicType(field reflect.Value, rows []map[string]interface{}, fieldName string, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+
+// TODO add data that use this function.../ remove if unnecessary
+// Not yet renamed as in other functions and contains both name and fieldName which is the same (But neede for SetField input)
+func populateBasicType(name string, field reflect.Value, parentID string, rows []map[string]interface{}, fieldName string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Msgf("Populating basic type field: %s", field)
 	for _, row := range rows {
 		if row["parent_id"] == parentID || parentID == "" {
 			for key, value := range row {
 				if strings.EqualFold(key, fieldName) {
-					if err := SetField(field.Addr().Interface(), fieldName, value, log); err != nil {
+					if err := SetField(field.Addr().Interface(), name, fieldName, value, log); err != nil {
 						return nil, err
 					}
 					return applyFilter(field, fieldName, searchParameterMap, log)
@@ -295,7 +314,8 @@ func populateBasicType(field reflect.Value, rows []map[string]interface{}, field
 	return &FilterResult{Passed: true}, nil
 }
 
-func populateStructFromRow(obj interface{}, row map[string]interface{}, log zerolog.Logger) error {
+func populateStructFields(name string, obj interface{}, row map[string]interface{}, log zerolog.Logger) error {
+	log.Debug().Str("Name", name).Msg("Populating structfields")
 	v := reflect.ValueOf(obj).Elem()
 	t := v.Type()
 
@@ -305,7 +325,7 @@ func populateStructFromRow(obj interface{}, row map[string]interface{}, log zero
 			fieldNameLower := strings.ToLower(field.Name)
 
 			if fieldNameLower == strings.ToLower(key) {
-				err := SetField(obj, field.Name, value, log)
+				err := SetField(obj, name, field.Name, value, log)
 				if err != nil {
 					return err
 				}
@@ -315,8 +335,8 @@ func populateStructFromRow(obj interface{}, row map[string]interface{}, log zero
 	return nil
 }
 
-func SetField(obj interface{}, name string, value interface{}, log zerolog.Logger) error {
-
+func SetField(obj interface{}, name string, fieldName string, value interface{}, log zerolog.Logger) error {
+	log.Debug().Msgf("Setting field %s to %v", fieldName, value)
 	structValue := reflect.ValueOf(obj)
 	if structValue.Kind() != reflect.Ptr || structValue.IsNil() {
 		return fmt.Errorf("obj must be a non-nil pointer to a struct")
@@ -327,13 +347,13 @@ func SetField(obj interface{}, name string, value interface{}, log zerolog.Logge
 		return fmt.Errorf("obj must point to a struct")
 	}
 
-	field := structElem.FieldByName(name)
+	field := structElem.FieldByName(fieldName)
 	if !field.IsValid() {
-		return fmt.Errorf("no such field: %s in obj", name)
+		return fmt.Errorf("no such field: %s in obj", fieldName)
 	}
 
 	if !field.CanSet() {
-		return fmt.Errorf("cannot set field %s", name)
+		return fmt.Errorf("cannot set field %s", fieldName)
 	}
 
 	if value == nil {
@@ -350,6 +370,8 @@ func SetField(obj interface{}, name string, value interface{}, log zerolog.Logge
 		if unmarshalJSONMethod.IsValid() {
 			//Map value first
 			stringValue := getStringValue(reflect.ValueOf(value))
+			//realFhirPath := fhirPath + "." + strings.ToLower(name)
+			// log.Debug().Msgf("RealfhirPath: %s, Field: %s, Value: %v", realFhirPath, name, stringValue)
 			TargetCode, err := mapConceptCode(stringValue, "Patient.gender", log)
 			if err != nil {
 				return fmt.Errorf("failed to map concept code: %v", err)
@@ -374,6 +396,7 @@ func SetField(obj interface{}, name string, value interface{}, log zerolog.Logge
 
 	// Handle conversion from []uint8 to []string if needed
 	if field.Type() == reflect.TypeOf([]string{}) && fieldValue.Type() == reflect.TypeOf([]uint8{}) {
+		log.Debug().Msgf("Converting []uint8 to []string for field %s", fieldName)
 		var strSlice []string
 		if err := json.Unmarshal(value.([]uint8), &strSlice); err != nil {
 			return fmt.Errorf("failed to unmarshal []uint8 to []string: %v", err)
@@ -425,10 +448,11 @@ func SetField(obj interface{}, name string, value interface{}, log zerolog.Logge
 		field.Set(newValue)
 	} else {
 		if field.Type() != fieldValue.Type() {
-			return fmt.Errorf("provided value type didn't match obj field type %s for field %s and %s ", field.Type(), name, fieldValue.Type())
+			return fmt.Errorf("provided value type didn't match obj field type %s for field %s and %s ", field.Type(), fieldName, fieldValue.Type())
 		}
 
 		field.Set(fieldValue)
+		log.Debug().Msgf("Set field %s to %v", fieldName, &fieldValue)
 	}
 
 	return nil
