@@ -18,14 +18,14 @@ import (
 )
 
 // ConceptMapperMap is a nested map structure for efficient lookups
-// The structure is: fhirPath -> sourceSystem -> sourceCode -> TargetCode
-type ConceptMapperMap map[string]map[string]map[string]TargetCode
+// The structure is: fhirPath -> sourceSystem -> sourceCode -> target
+type ConceptMapperMap map[string]map[string]map[string]target
 
 // TargetCode represents the mapped code in the target system
-type TargetCode struct {
-	System  string
-	Code    string
-	Display string
+type target struct {
+	system  string
+	code    string
+	display string
 }
 
 var globalConceptMaps ConceptMapperMap
@@ -34,47 +34,47 @@ func initializeGenderConceptMap() {
 	globalConceptMaps = ConceptMapperMap{
 		"Patient.gender": {
 			"http://hl7.org/fhir/administrative-gender": {
-				"male": TargetCode{
-					System:  "http://snomed.info/sct",
-					Code:    "248153007",
-					Display: "Male",
+				"male": target{
+					system:  "http://snomed.info/sct",
+					code:    "248153007",
+					display: "Male",
 				},
-				"female": TargetCode{
-					System:  "http://snomed.info/sct",
-					Code:    "248152002",
-					Display: "Female",
+				"female": target{
+					system:  "http://snomed.info/sct",
+					code:    "248152002",
+					display: "Female",
 				},
-				"other": TargetCode{
-					System:  "http://snomed.info/sct",
-					Code:    "394743007",
-					Display: "Other",
+				"other": target{
+					system:  "http://snomed.info/sct",
+					code:    "394743007",
+					display: "Other",
 				},
-				"unknown": TargetCode{
-					System:  "http://snomed.info/sct",
-					Code:    "unknown",
-					Display: "Unknown",
+				"unknown": target{
+					system:  "http://snomed.info/sct",
+					code:    "unknown",
+					display: "Unknown",
 				},
 			},
 			"": { // For system-agnostic mappings
-				"M": TargetCode{
-					System:  "http://hl7.org/fhir/administrative-gender",
-					Code:    "male",
-					Display: "Male",
+				"M": target{
+					system:  "http://hl7.org/fhir/administrative-gender",
+					code:    "male",
+					display: "Male",
 				},
-				"F": TargetCode{
-					System:  "http://hl7.org/fhir/administrative-gender",
-					Code:    "female",
-					Display: "Female",
+				"F": target{
+					system:  "http://hl7.org/fhir/administrative-gender",
+					code:    "female",
+					display: "Female",
 				},
-				"O": TargetCode{
-					System:  "http://hl7.org/fhir/administrative-gender",
-					Code:    "other",
-					Display: "Other",
+				"O": target{
+					system:  "http://hl7.org/fhir/administrative-gender",
+					code:    "other",
+					display: "Other",
 				},
-				"U": TargetCode{
-					System:  "http://hl7.org/fhir/administrative-gender",
-					Code:    "unknown",
-					Display: "Unknown",
+				"U": target{
+					system:  "http://hl7.org/fhir/administrative-gender",
+					code:    "unknown",
+					display: "Unknown",
 				},
 			},
 		},
@@ -159,13 +159,13 @@ func ProcessDataSource(ds DataSource, searchParameterMap SearchParameterMap, log
 	return patient, "", nil
 }
 
-func populateResourceStruct(name string, value reflect.Value, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	if name == "" {
-		name = value.Type().Name()
-		log.Debug().Str("Name", name).Msg("Populating resource struct")
+func populateResourceStruct(structPath string, value reflect.Value, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	if structPath == "" {
+		structPath = value.Type().Name()
+		log.Debug().Str("Name", structPath).Msg("Populating resource struct")
 	}
 
-	filterResult, err := determineType(name, value, parentID, resultMap, searchParameterMap, log)
+	filterResult, err := determineType(structPath, value, parentID, resultMap, searchParameterMap, log)
 	if err != nil {
 		return nil, err
 	}
@@ -176,11 +176,11 @@ func populateResourceStruct(name string, value reflect.Value, parentID string, r
 	return &FilterResult{Passed: true}, nil
 }
 
-func determineType(name string, value reflect.Value, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	log.Debug().Str("Name", name).Msg("Determining type")
-	rows, exists := resultMap[name]
+func determineType(structPath string, value reflect.Value, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Str("StructPath", structPath).Msg("Determining type")
+	rows, exists := resultMap[structPath]
 	if !exists {
-		log.Debug().Msgf("No data found for: %s", name)
+		log.Debug().Msgf("No data found for: %s", structPath)
 		return &FilterResult{Passed: true}, nil
 	}
 
@@ -191,34 +191,34 @@ func determineType(name string, value reflect.Value, parentID string, resultMap 
 		// However, the patient resource does not contain slices of basic types, so this I am not sure if it works well if for example
 		// the resource humanName is filled directly as resource instead of as struct within resource. That contains several slices of strings.
 		// TODO: test this with a resource that contains slices of basic types.
-		return populateSlice(name, value, parentID, rows, resultMap, searchParameterMap, log)
+		return populateSlice(structPath, value, parentID, rows, resultMap, searchParameterMap, log)
 	case reflect.Struct:
-		log.Debug().Str("Name", name).Msgf("Type is struct")
-		return populateStruct(name, value, parentID, rows, resultMap, searchParameterMap, log)
+		log.Debug().Str("Structpath", structPath).Msgf("Type is struct")
+		return populateStruct(structPath, value, parentID, rows, resultMap, searchParameterMap, log)
 	case reflect.Ptr:
-		log.Debug().Str("Name", name).Msgf("Type is pointer")
+		log.Debug().Str("Structpath", structPath).Msgf("Type is pointer")
 		if value.IsNil() {
 			value.Set(reflect.New(value.Type().Elem()))
 		}
-		log.Debug().Str("Name", name).Msgf("Changed nil pointer to new instance of %s", value.Type().Elem())
-		return determineType(name, value.Elem(), parentID, resultMap, searchParameterMap, log)
+		log.Debug().Str("Structpath", structPath).Msgf("Changed nil pointer to new instance of %s", value.Type().Elem())
+		return determineType(structPath, value.Elem(), parentID, resultMap, searchParameterMap, log)
 	default:
-		log.Debug().Str("Name", name).Msgf("Type is basic type")
-		return populateBasicType(name, value, parentID, rows, name, searchParameterMap, log)
+		log.Debug().Str("StructPath", structPath).Msgf("Type is basic type")
+		return populateBasicType(structPath, value, parentID, rows, structPath, searchParameterMap, log)
 	}
 }
 
-func populateSlice(name string, value reflect.Value, parentID string, rows []map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	log.Debug().Str("Name", name).Msg("Populating slice")
+func populateSlice(structPath string, value reflect.Value, parentID string, rows []map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Str("structPath", structPath).Msg("Populating slice")
 	anyElementPassed := false
 	for _, row := range rows {
 		if row["parent_id"] == parentID || parentID == "" {
-			elem := reflect.New(value.Type().Elem()).Elem()
-			if err := populateStructAndNestedFields(name, elem, row, resultMap, searchParameterMap, log); err != nil {
+			valueElement := reflect.New(value.Type().Elem()).Elem()
+			if err := populateStructAndNestedFields(structPath, valueElement, row, resultMap, searchParameterMap, log); err != nil {
 				return nil, err
 			}
 
-			filterResult, err := applyFilter(elem, name, searchParameterMap, log)
+			filterResult, err := applyFilter(valueElement, structPath, searchParameterMap, log)
 			if err != nil {
 				return nil, err
 			}
@@ -226,12 +226,12 @@ func populateSlice(name string, value reflect.Value, parentID string, rows []map
 			if filterResult.Passed {
 				anyElementPassed = true
 				log.Debug().
-					Str("Name", name).
+					Str("StructPath", structPath).
 					Msg("Slice element passed filter, continuing slice population")
 			}
 
 			// Always add the element to the slice, regardless of filter result
-			value.Set(reflect.Append(value, elem))
+			value.Set(reflect.Append(value, valueElement))
 		}
 	}
 
@@ -239,18 +239,18 @@ func populateSlice(name string, value reflect.Value, parentID string, rows []map
 		return &FilterResult{Passed: true}, nil
 	}
 
-	return &FilterResult{Passed: false, Message: fmt.Sprintf("No elements in slice passed filter: %s", name)}, nil
+	return &FilterResult{Passed: false, Message: fmt.Sprintf("No elements in slice at structpath %s passed filter", structPath)}, nil
 }
 
-func populateStruct(name string, value reflect.Value, parentID string, rows []map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	log.Debug().Str("Name", name).Msg("Populating struct")
+func populateStruct(structPath string, value reflect.Value, parentID string, rows []map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Str("Structpath", structPath).Msg("Populating struct")
 	for _, row := range rows {
 		if row["parent_id"] == parentID || parentID == "" {
-			if err := populateStructAndNestedFields(name, value, row, resultMap, searchParameterMap, log); err != nil {
+			if err := populateStructAndNestedFields(structPath, value, row, resultMap, searchParameterMap, log); err != nil {
 				return nil, err
 			}
 
-			filterResult, err := applyFilter(value, name, searchParameterMap, log)
+			filterResult, err := applyFilter(value, structPath, searchParameterMap, log)
 			if err != nil {
 				return nil, err
 			}
@@ -265,14 +265,14 @@ func populateStruct(name string, value reflect.Value, parentID string, rows []ma
 }
 
 // TODO nestedelements -> nested felds
-func populateStructAndNestedFields(name string, elem reflect.Value, row map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
-	log.Debug().Str("Name", name).Msg("Populating struct and nested fields")
-	if err := populateStructFields(name, elem.Addr().Interface(), row, log); err != nil {
+func populateStructAndNestedFields(structPath string, valueElement reflect.Value, row map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
+	log.Debug().Str("structPath", structPath).Msg("Populating struct and nested fields")
+	if err := populateStructFields(structPath, valueElement.Addr().Interface(), row, log); err != nil {
 		return err
 	}
 
 	currentID, _ := row["id"].(string)
-	return populateNestedFields(name, elem, resultMap, currentID, searchParameterMap, log)
+	return populateNestedFields(structPath, valueElement, resultMap, currentID, searchParameterMap, log)
 }
 
 func populateNestedFields(parentName string, parentValue reflect.Value, resultMap map[string][]map[string]interface{}, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
@@ -303,7 +303,7 @@ func populateBasicType(name string, field reflect.Value, parentID string, rows [
 		if row["parent_id"] == parentID || parentID == "" {
 			for key, value := range row {
 				if strings.EqualFold(key, fieldName) {
-					if err := SetField(field.Addr().Interface(), name, fieldName, value, log); err != nil {
+					if err := SetField(fieldName, field.Addr().Interface(), name, value, log); err != nil {
 						return nil, err
 					}
 					return applyFilter(field, fieldName, searchParameterMap, log)
@@ -314,18 +314,19 @@ func populateBasicType(name string, field reflect.Value, parentID string, rows [
 	return &FilterResult{Passed: true}, nil
 }
 
-func populateStructFields(name string, obj interface{}, row map[string]interface{}, log zerolog.Logger) error {
-	log.Debug().Str("Name", name).Msg("Populating structfields")
-	v := reflect.ValueOf(obj).Elem()
-	t := v.Type()
+func populateStructFields(structPath string, structPointer interface{}, row map[string]interface{}, log zerolog.Logger) error {
+	log.Debug().Str("Structpath", structPath).Msg("Populating structfields")
+	structValue := reflect.ValueOf(structPointer).Elem() // This is yet an empty struct
+	structType := structValue.Type()
+	log.Debug().Msgf("Struct type: %s", structType.Name())
 
 	for key, value := range row {
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
-			fieldNameLower := strings.ToLower(field.Name)
+		for i := 0; i < structType.NumField(); i++ {
+			fieldName := structType.Field(i).Name
+			fieldNameLower := strings.ToLower(fieldName)
 
 			if fieldNameLower == strings.ToLower(key) {
-				err := SetField(obj, name, field.Name, value, log)
+				err := SetField(structPath, structPointer, fieldName, value, log)
 				if err != nil {
 					return err
 				}
@@ -335,56 +336,61 @@ func populateStructFields(name string, obj interface{}, row map[string]interface
 	return nil
 }
 
-func SetField(obj interface{}, name string, fieldName string, value interface{}, log zerolog.Logger) error {
-	log.Debug().Msgf("Setting field %s to %v", fieldName, value)
-	structValue := reflect.ValueOf(obj)
+// This function is used to set the value of a field in a struct
+// It actually also does a lot of validation and conversion of the value to the correct type
+func SetField(structPath string, structPointer interface{}, structFieldName string, inputValue interface{}, log zerolog.Logger) error {
+	log.Debug().Msgf("Setting structPath %s field %s to %v", structPath, structFieldName, inputValue)
+
+	// Do some checks to ensure that the structField can be set
+	structValue := reflect.ValueOf(structPointer)
 	if structValue.Kind() != reflect.Ptr || structValue.IsNil() {
-		return fmt.Errorf("obj must be a non-nil pointer to a struct")
+		return fmt.Errorf("structPointer must be a non-nil pointer to a struct")
 	}
 
-	structElem := structValue.Elem()
-	if structElem.Kind() != reflect.Struct {
-		return fmt.Errorf("obj must point to a struct")
+	structValueElement := structValue.Elem()
+	if structValueElement.Kind() != reflect.Struct {
+		return fmt.Errorf("structPointer must point to a struct type")
 	}
 
-	field := structElem.FieldByName(fieldName)
-	if !field.IsValid() {
-		return fmt.Errorf("no such field: %s in obj", fieldName)
+	structField := structValueElement.FieldByName(structFieldName)
+	if !structField.IsValid() {
+		return fmt.Errorf("no such field: %s in struct", structFieldName)
 	}
 
-	if !field.CanSet() {
-		return fmt.Errorf("cannot set field %s", fieldName)
+	if !structField.CanSet() {
+		return fmt.Errorf("cannot set field %s", structFieldName)
 	}
 
-	if value == nil {
-		field.Set(reflect.Zero(field.Type()))
+	// Set the structField to it's zero value if value is nil
+	if inputValue == nil {
+		structField.Set(reflect.Zero(structField.Type()))
 		return nil
 	}
 
 	// Check if the field is a pointer to a type that implements UnmarshalJSON
-	if field.Kind() == reflect.Ptr {
-		if field.IsNil() {
-			field.Set(reflect.New(field.Type().Elem()))
+	if structField.Kind() == reflect.Ptr {
+		if structField.IsNil() {
+			structField.Set(reflect.New(structField.Type().Elem()))
 		}
-		unmarshalJSONMethod := field.MethodByName("UnmarshalJSON")
+		unmarshalJSONMethod := structField.MethodByName("UnmarshalJSON")
 		if unmarshalJSONMethod.IsValid() {
 			//Map value first
-			stringValue := getStringValue(reflect.ValueOf(value))
+			stringInputValue := getStringValue(reflect.ValueOf(inputValue))
 			//realFhirPath := fhirPath + "." + strings.ToLower(name)
 			// log.Debug().Msgf("RealfhirPath: %s, Field: %s, Value: %v", realFhirPath, name, stringValue)
-			TargetCode, err := mapConceptCode(stringValue, "Patient.gender", log)
+			target, err := mapConceptCode(stringInputValue, "Patient.gender", log)
 			if err != nil {
 				return fmt.Errorf("failed to map concept code: %v", err)
 			}
-			value = TargetCode.Code
+			inputValue = target.code
 			// Convert the value to JSON
-			jsonValue, err := json.Marshal(value)
+			jsonInputValue, err := json.Marshal(inputValue)
 			if err != nil {
 				return fmt.Errorf("failed to marshal value to JSON: %v", err)
 			}
 
 			// Call UnmarshalJSON
-			results := unmarshalJSONMethod.Call([]reflect.Value{reflect.ValueOf(jsonValue)})
+			results := unmarshalJSONMethod.Call([]reflect.Value{reflect.ValueOf(jsonInputValue)})
 			if len(results) > 0 && !results[0].IsNil() {
 				return results[0].Interface().(error)
 			}
@@ -392,67 +398,67 @@ func SetField(obj interface{}, name string, fieldName string, value interface{},
 		}
 	}
 
-	fieldValue := reflect.ValueOf(value)
+	structFieldInputValue := reflect.ValueOf(inputValue)
 
 	// Handle conversion from []uint8 to []string if needed
-	if field.Type() == reflect.TypeOf([]string{}) && fieldValue.Type() == reflect.TypeOf([]uint8{}) {
-		log.Debug().Msgf("Converting []uint8 to []string for field %s", fieldName)
+	if structField.Type() == reflect.TypeOf([]string{}) && structFieldInputValue.Type() == reflect.TypeOf([]uint8{}) {
+		log.Debug().Msgf("Converting []uint8 to []string for field %s", structFieldName)
 		var strSlice []string
-		if err := json.Unmarshal(value.([]uint8), &strSlice); err != nil {
+		if err := json.Unmarshal(inputValue.([]uint8), &strSlice); err != nil {
 			return fmt.Errorf("failed to unmarshal []uint8 to []string: %v", err)
 		}
-		field.Set(reflect.ValueOf(strSlice))
+		structField.Set(reflect.ValueOf(strSlice))
 		return nil
 	}
 
-	if field.Kind() == reflect.Ptr && (field.Type().Elem().Kind() == reflect.String || field.Type().Elem().Kind() == reflect.Bool) {
-		var newValue reflect.Value
+	if structField.Kind() == reflect.Ptr && (structField.Type().Elem().Kind() == reflect.String || structField.Type().Elem().Kind() == reflect.Bool) {
+		var convertedValue reflect.Value
 
-		switch field.Type().Elem().Kind() {
+		switch structField.Type().Elem().Kind() {
 		case reflect.String:
-			var strValue string
-			switch v := value.(type) {
+			var stringValue string
+			switch typedInputValue := inputValue.(type) {
 			case string:
-				strValue = v
+				stringValue = typedInputValue
 			case int, int8, int16, int32, int64:
-				strValue = fmt.Sprintf("%d", v)
+				stringValue = fmt.Sprintf("%d", typedInputValue)
 			case uint, uint8, uint16, uint32, uint64:
-				strValue = fmt.Sprintf("%d", v)
+				stringValue = fmt.Sprintf("%d", typedInputValue)
 			case float32, float64:
-				strValue = fmt.Sprintf("%f", v)
+				stringValue = fmt.Sprintf("%f", typedInputValue)
 			case bool:
-				strValue = strconv.FormatBool(v)
+				stringValue = strconv.FormatBool(typedInputValue)
 			case time.Time:
-				strValue = v.Format(time.RFC3339)
+				stringValue = typedInputValue.Format(time.RFC3339)
 			default:
-				return fmt.Errorf("cannot convert %T to *string", value)
+				return fmt.Errorf("cannot convert %T to *string", inputValue)
 			}
-			newValue = reflect.ValueOf(&strValue)
+			convertedValue = reflect.ValueOf(&stringValue)
 		case reflect.Bool:
 			var boolValue bool
-			switch v := value.(type) {
+			switch typedInputValue := inputValue.(type) {
 			case bool:
-				boolValue = v
+				boolValue = typedInputValue
 			case string:
 				var err error
-				boolValue, err = strconv.ParseBool(v)
+				boolValue, err = strconv.ParseBool(typedInputValue)
 				if err != nil {
-					return fmt.Errorf("cannot convert string to *bool: %s", v)
+					return fmt.Errorf("cannot convert string to *bool: %s", typedInputValue)
 				}
 			default:
-				return fmt.Errorf("cannot convert %T to *bool", value)
+				return fmt.Errorf("cannot convert %T to *bool", inputValue)
 			}
-			newValue = reflect.ValueOf(&boolValue)
+			convertedValue = reflect.ValueOf(&boolValue)
 		}
 
-		field.Set(newValue)
+		structField.Set(convertedValue)
 	} else {
-		if field.Type() != fieldValue.Type() {
-			return fmt.Errorf("provided value type didn't match obj field type %s for field %s and %s ", field.Type(), fieldName, fieldValue.Type())
+		if structField.Type() != structFieldInputValue.Type() {
+			return fmt.Errorf("provided value type didn't match struct field type %s for field %s and %s ", structField.Type(), structFieldName, structFieldInputValue.Type())
 		}
 
-		field.Set(fieldValue)
-		log.Debug().Msgf("Set field %s to %v", fieldName, &fieldValue)
+		structField.Set(structFieldInputValue)
+		log.Debug().Msgf("Set field %s to %v", structFieldName, &structFieldInputValue)
 	}
 
 	return nil
@@ -498,22 +504,22 @@ func extendFhirPath(parentPath, childName string) string {
 	return fmt.Sprintf("%s.%s", parentPath, strings.ToLower(childName))
 }
 
-func mapConceptCode(value string, fhirPath string, log zerolog.Logger) (TargetCode, error) {
+func mapConceptCode(value string, fhirPath string, log zerolog.Logger) (target, error) {
 	// Simple implementation without system handling
 	log.Debug().Str("fhirPath", fhirPath).Str("sourceCode", value).Msg("Mapping concept code")
 	if conceptMap, ok := globalConceptMaps[fhirPath]; ok {
 		if systemMap, ok := conceptMap[""]; ok {
-			if targetCode, ok := systemMap[value]; ok {
+			if target, ok := systemMap[value]; ok {
 				log.Debug().
 					Str("fhirPath", fhirPath).
 					Str("sourceCode", value).
-					Str("targetCode", targetCode.Code).
+					Str("targetCode", target.code).
 					Msg("Applied concept mapping")
-				return targetCode, nil
+				return target, nil
 			}
 		}
 	}
 
 	// If no mapping found, return the original value
-	return TargetCode{Code: value}, nil
+	return target{code: value}, nil
 }
