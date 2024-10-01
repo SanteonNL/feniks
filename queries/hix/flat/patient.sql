@@ -1,6 +1,6 @@
 WITH names AS (
     SELECT
-        'Patient' as field_name,
+        'Patient' as fhir_path,
         p.identificatienummer as id,
         '' as parent_id,
         p.geboortedatum as birthDate,
@@ -19,7 +19,7 @@ FROM
     names
 UNION ALL
 SELECT
-    'Patient.identifier' as field_name,
+    'Patient.identifier' as fhir_path,
     id as id,
     id as parent_id,
     null as birthDate,
@@ -30,7 +30,7 @@ FROM
     names
 UNION ALL
 SELECT
-    'Patient.identifier.type' as field_name,
+    'Patient.identifier.type' as fhir_path,
     id,
     id as parent_id,
     null as birthDate,
@@ -41,7 +41,7 @@ FROM
     names
 UNION ALL
 SELECT
-    'Patient.identifier' as field_name,
+    'Patient.identifier' as fhir_path,
     '12345' as id,
     id as parent_id,
     null as birthDate,
@@ -52,7 +52,7 @@ FROM
     names
 UNION ALL
 SELECT
-    'Patient.identifier.type' as field_nam,
+    'Patient.identifier.type' as fhir_path,
     '123435465' as id,
     '12345' as parent_id,
     null as birthDate,
@@ -62,10 +62,9 @@ SELECT
 FROM
     names;
 
-
-
+-- The following part is commented out in the original query, so I'm keeping it commented
 -- SELECT
---     'Patient.identifier' as field_name,
+--     'Patient.identifier' as fhir_path,
 --     '123345' as id,
 --     id as parent_id,
 --     null as birthDate,
@@ -75,7 +74,7 @@ FROM
 --     names;
 -- UNION ALL
 -- SELECT
---     'Patient.identifier' as field_name,
+--     'Patient.identifier' as fhir_path,
 --     id as id,
 --     id as parent_id,
 --     null as birthDate,
@@ -83,10 +82,9 @@ FROM
 --     id as value
 -- FROM
 --     names
--- UNION
--- ALL
+-- UNION ALL
 -- SELECT
---     'Patient.identifier.type' as field_name,
+--     'Patient.identifier.type' as fhir_path,
 --     id,
 --     id as parent_id,
 --     null as birthDate,
@@ -95,71 +93,28 @@ FROM
 -- FROM
 --     names;
 
-
-
-
-
 SELECT
-    'Patient.identifier.type.coding' as field_name,
+    'Patient.identifier.type.coding' as fhir_path,
     '123435465'as parent_id,
     '1234' as id,
     'http://terminology.hl7.org/CodeSystem/v2-0203' as system,
     'MR' as code;
 SELECT
-    'Patient.identifier.type.coding' as field_name,
-        '123'as parent_id,
+    'Patient.identifier.type.coding' as fhir_path,
+    '123'as parent_id,
     '12345' as id,
     'http://terminology.hl7.org/CodeSystem/v2-0203' as system,
-    'AN' as code    ;
-
-
-
+    'AN' as code;
 
 WITH names AS (
     SELECT
-        'Patient.name' as field_name,
+        'Patient.name' as fhir_path,
         p.identificatienummer as parent_id,
         concat(p.identificatienummer, humanName.lastname) AS id,
         humanName.lastname as family,
         JSON_ARRAY(humanName.firstname, 'Tommy', 'Jantine') AS given,
-        null as start,
-        null as
-end
-FROM
-    patient p
-    JOIN names humanName ON humanName.identificatienummer = p.identificatienummer
-WHERE
-    1 = 1
-    AND p.identificatienummer = '123'
-GROUP BY
-    p.identificatienummer,
-    humanName.lastname,
-    humanName.firstname
-)
-SELECT
-    *
-FROM
-    names;
-
-WITH names AS (
-    SELECT
-        'Patient.name' as field_name,
-        p.identificatienummer as parent_id,
-        CONCAT(
-            p.identificatienummer,
-            humanName.lastname,
-            humanName.period_start,
-            ROW_NUMBER() OVER (
-                ORDER BY
-                    p.identificatienummer,
-                    humanName.lastname,
-                    humanName.period_start
-            )
-        ) AS id,
-        humanName.lastname as family,
-        humanName.firstname AS name,
-        period_start as start,
-        period_end as endx
+        '20120101' as "period.start",
+        '20120102' as "period.end"
     FROM
         patient p
         JOIN names humanName ON humanName.identificatienummer = p.identificatienummer
@@ -169,22 +124,17 @@ WITH names AS (
     GROUP BY
         p.identificatienummer,
         humanName.lastname,
-        humanName.firstname,
-        humanName.period_start,
-        humanName.period_end
+        humanName.firstname
 )
 SELECT
-    'Patient.name.period' as field_name,
-    id as parent_id,
-    id,
-    start,
-    endx as
-end
+    *
 FROM
     names;
 
+
+
 SELECT
-    'Patient.contact.telecom' AS field_name,
+    'Patient.contact.telecom' AS fhir_path,
     c.id AS parent_id,
     CONCAT(c.id, cp.system) AS id,
     cp.system,
@@ -201,7 +151,7 @@ GROUP BY
     c.id;
 
 SELECT
-    'Patient.contact' AS field_name,
+    'Patient.contact' AS fhir_path,
     p.identificatienummer AS parent_id,
     c.id AS id
 FROM
@@ -212,7 +162,7 @@ WHERE
     AND p.identificatienummer = '123';
 
 SELECT
-    'Patient.contact.telecom' AS field_name,
+    'Patient.contact.telecom' AS fhir_path,
     c.id AS parent_id,
     CONCAT(c.id, cp.system) AS id,
     cp.system,

@@ -101,6 +101,12 @@ func main() {
 	query := string(queryBytes)
 	dataSource := NewSQLDataSource(db, query, log)
 
+	data, err := dataSource.Read("123")
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to read data")
+	}
+	log.Debug().Interface("dataMap", data).Msg("Flat data before mapping to FHIR")
+
 	// Set up search parameters
 	searchParameterMap := SearchParameterMap{
 		"Patient.identifier": SearchParameter{
@@ -113,7 +119,7 @@ func main() {
 	// Initialize concept maps
 	initializeGenderConceptMap()
 
-	// Process data
+	//Process data
 	patient, filterMessage, err := ProcessDataSource(dataSource, searchParameterMap, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to process data source")
@@ -138,7 +144,7 @@ func main() {
 }
 
 func ProcessDataSource(ds DataSource, searchParameterMap SearchParameterMap, log zerolog.Logger) (*fhir.Patient, string, error) {
-	data, err := ds.Read()
+	data, err := ds.Read("123")
 	if err != nil {
 		return nil, "", err
 	}
@@ -159,13 +165,13 @@ func ProcessDataSource(ds DataSource, searchParameterMap SearchParameterMap, log
 	return patient, "", nil
 }
 
-func populateResourceStruct(structPath string, value reflect.Value, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func populateResourceStruct(structPath string, value reflect.Value, parentID string, rowDataMap map[string][]RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	if structPath == "" {
 		structPath = value.Type().Name()
 		log.Debug().Str("Name", structPath).Msg("Populating resource struct")
 	}
 
-	filterResult, err := determineType(structPath, value, parentID, resultMap, searchParameterMap, log)
+	filterResult, err := determineType(structPath, value, parentID, rowDataMap, searchParameterMap, log)
 	if err != nil {
 		return nil, err
 	}
@@ -176,9 +182,9 @@ func populateResourceStruct(structPath string, value reflect.Value, parentID str
 	return &FilterResult{Passed: true}, nil
 }
 
-func determineType(structPath string, value reflect.Value, parentID string, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func determineType(structPath string, value reflect.Value, parentID string, rowDataMap map[string][]RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	log.Debug().Str("StructPath", structPath).Msg("Determining type")
-	rows, exists := resultMap[structPath]
+	rows, exists := rowDataMap[structPath]
 	if !exists {
 		log.Debug().Msgf("No data found for: %s", structPath)
 		return &FilterResult{Passed: true}, nil
@@ -191,30 +197,30 @@ func determineType(structPath string, value reflect.Value, parentID string, resu
 		// However, the patient resource does not contain slices of basic types, so this I am not sure if it works well if for example
 		// the resource humanName is filled directly as resource instead of as struct within resource. That contains several slices of strings.
 		// TODO: test this with a resource that contains slices of basic types.
-		return populateSlice(structPath, value, parentID, rows, resultMap, searchParameterMap, log)
+		return populateSlice(structPath, value, parentID, rows, rowDataMap, searchParameterMap, log)
 	case reflect.Struct:
 		log.Debug().Str("Structpath", structPath).Msgf("Type is struct")
-		return populateStruct(structPath, value, parentID, rows, resultMap, searchParameterMap, log)
+		return populateStruct(structPath, value, parentID, rows, rowDataMap, searchParameterMap, log)
 	case reflect.Ptr:
 		log.Debug().Str("Structpath", structPath).Msgf("Type is pointer")
 		if value.IsNil() {
 			value.Set(reflect.New(value.Type().Elem()))
 		}
 		log.Debug().Str("Structpath", structPath).Msgf("Changed nil pointer to new instance of %s", value.Type().Elem())
-		return determineType(structPath, value.Elem(), parentID, resultMap, searchParameterMap, log)
+		return determineType(structPath, value.Elem(), parentID, rowDataMap, searchParameterMap, log)
 	default:
 		log.Debug().Str("StructPath", structPath).Msgf("Type is basic type")
 		return populateBasicType(structPath, value, parentID, rows, structPath, searchParameterMap, log)
 	}
 }
 
-func populateSlice(structPath string, value reflect.Value, parentID string, rows []map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func populateSlice(structPath string, value reflect.Value, parentID string, rows []RowData, rowDataMap map[string][]RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	log.Debug().Str("structPath", structPath).Msg("Populating slice")
 	anyElementPassed := false
 	for _, row := range rows {
-		if row["parent_id"] == parentID || parentID == "" {
+		if row.ParentID == parentID || parentID == "" {
 			valueElement := reflect.New(value.Type().Elem()).Elem()
-			if err := populateStructAndNestedFields(structPath, valueElement, row, resultMap, searchParameterMap, log); err != nil {
+			if err := populateStructAndNestedFields(structPath, valueElement, row, rowDataMap, searchParameterMap, log); err != nil {
 				return nil, err
 			}
 
@@ -242,10 +248,10 @@ func populateSlice(structPath string, value reflect.Value, parentID string, rows
 	return &FilterResult{Passed: false, Message: fmt.Sprintf("No elements in slice at structpath %s passed filter", structPath)}, nil
 }
 
-func populateStruct(structPath string, value reflect.Value, parentID string, rows []map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func populateStruct(structPath string, value reflect.Value, parentID string, rows []RowData, resultMap map[string][]RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	log.Debug().Str("Structpath", structPath).Msg("Populating struct")
 	for _, row := range rows {
-		if row["parent_id"] == parentID || parentID == "" {
+		if row.ParentID == parentID || parentID == "" {
 			if err := populateStructAndNestedFields(structPath, value, row, resultMap, searchParameterMap, log); err != nil {
 				return nil, err
 			}
@@ -265,17 +271,17 @@ func populateStruct(structPath string, value reflect.Value, parentID string, row
 }
 
 // TODO nestedelements -> nested felds
-func populateStructAndNestedFields(structPath string, valueElement reflect.Value, row map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
+func populateStructAndNestedFields(structPath string, valueElement reflect.Value, row RowData, resultMap map[string][]RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
 	log.Debug().Str("structPath", structPath).Msg("Populating struct and nested fields")
 	if err := populateStructFields(structPath, valueElement.Addr().Interface(), row, searchParameterMap, log); err != nil {
 		return err
 	}
 
-	currentID, _ := row["id"].(string)
+	currentID := row.ID
 	return populateNestedFields(structPath, valueElement, resultMap, currentID, searchParameterMap, log)
 }
 
-func populateNestedFields(parentName string, parentValue reflect.Value, resultMap map[string][]map[string]interface{}, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
+func populateNestedFields(parentName string, parentValue reflect.Value, resultMap map[string][]RowData, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
 	log.Debug().Msgf("Populating nested fields for %s", parentName)
 	for i := 0; i < parentValue.NumField(); i++ {
 		childValue := parentValue.Field(i)
@@ -299,11 +305,11 @@ func populateNestedFields(parentName string, parentValue reflect.Value, resultMa
 // Not yet renamed as in other functions and contains both name and fieldName which is the same (But neede for SetField input)
 // TODO ApplyFilter is used in this function but as setting basic types is not using this function they are not filtered also it seems...
 // Or maybe not because filtereing is only for certain types?
-func populateBasicType(name string, field reflect.Value, parentID string, rows []map[string]interface{}, fieldName string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func populateBasicType(name string, field reflect.Value, parentID string, rows []RowData, fieldName string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	log.Debug().Msgf("Populating basic type field: %s", field)
 	for _, row := range rows {
-		if row["parent_id"] == parentID || parentID == "" {
-			for key, value := range row {
+		if row.ParentID == parentID || parentID == "" {
+			for key, value := range row.Data {
 				if strings.EqualFold(key, fieldName) {
 					if err := SetField(fieldName, field.Addr().Interface(), name, value, log); err != nil {
 						return nil, err
@@ -317,13 +323,13 @@ func populateBasicType(name string, field reflect.Value, parentID string, rows [
 }
 
 // I think this is now used instead of populateBasicType
-func populateStructFields(structPath string, structPointer interface{}, row map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
+func populateStructFields(structPath string, structPointer interface{}, row RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
 	log.Debug().Str("Structpath", structPath).Msg("Populating structfields")
 	structValue := reflect.ValueOf(structPointer).Elem() // This is yet an empty struct
 	structType := structValue.Type()
 	log.Debug().Msgf("Struct type: %s", structType.Name())
 
-	for key, value := range row {
+	for key, value := range row.Data {
 		for i := 0; i < structType.NumField(); i++ {
 			fieldName := structType.Field(i).Name
 			fieldNameLower := strings.ToLower(fieldName)
@@ -504,7 +510,7 @@ func applyFilter(structPath string, structFieldValue reflect.Value, searchParame
 	return &FilterResult{Passed: true}, nil
 }
 
-func hasDataForPath(resultMap map[string][]map[string]interface{}, path string) bool {
+func hasDataForPath(resultMap map[string][]RowData, path string) bool {
 	if _, exists := resultMap[path]; exists {
 		return true
 	}
