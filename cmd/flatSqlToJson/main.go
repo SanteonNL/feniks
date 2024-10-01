@@ -218,7 +218,7 @@ func populateSlice(structPath string, value reflect.Value, parentID string, rows
 				return nil, err
 			}
 
-			filterResult, err := applyFilter(valueElement, structPath, searchParameterMap, log)
+			filterResult, err := applyFilter(structPath, valueElement, searchParameterMap, log)
 			if err != nil {
 				return nil, err
 			}
@@ -250,7 +250,7 @@ func populateStruct(structPath string, value reflect.Value, parentID string, row
 				return nil, err
 			}
 
-			filterResult, err := applyFilter(value, structPath, searchParameterMap, log)
+			filterResult, err := applyFilter(structPath, value, searchParameterMap, log)
 			if err != nil {
 				return nil, err
 			}
@@ -267,7 +267,7 @@ func populateStruct(structPath string, value reflect.Value, parentID string, row
 // TODO nestedelements -> nested felds
 func populateStructAndNestedFields(structPath string, valueElement reflect.Value, row map[string]interface{}, resultMap map[string][]map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
 	log.Debug().Str("structPath", structPath).Msg("Populating struct and nested fields")
-	if err := populateStructFields(structPath, valueElement.Addr().Interface(), row, log); err != nil {
+	if err := populateStructFields(structPath, valueElement.Addr().Interface(), row, searchParameterMap, log); err != nil {
 		return err
 	}
 
@@ -297,6 +297,8 @@ func populateNestedFields(parentName string, parentValue reflect.Value, resultMa
 
 // TODO add data that use this function.../ remove if unnecessary
 // Not yet renamed as in other functions and contains both name and fieldName which is the same (But neede for SetField input)
+// TODO ApplyFilter is used in this function but as setting basic types is not using this function they are not filtered also it seems...
+// Or maybe not because filtereing is only for certain types?
 func populateBasicType(name string, field reflect.Value, parentID string, rows []map[string]interface{}, fieldName string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	log.Debug().Msgf("Populating basic type field: %s", field)
 	for _, row := range rows {
@@ -306,7 +308,7 @@ func populateBasicType(name string, field reflect.Value, parentID string, rows [
 					if err := SetField(fieldName, field.Addr().Interface(), name, value, log); err != nil {
 						return nil, err
 					}
-					return applyFilter(field, fieldName, searchParameterMap, log)
+					return applyFilter(fieldName, field, searchParameterMap, log)
 				}
 			}
 		}
@@ -314,7 +316,8 @@ func populateBasicType(name string, field reflect.Value, parentID string, rows [
 	return &FilterResult{Passed: true}, nil
 }
 
-func populateStructFields(structPath string, structPointer interface{}, row map[string]interface{}, log zerolog.Logger) error {
+// I think this is now used instead of populateBasicType
+func populateStructFields(structPath string, structPointer interface{}, row map[string]interface{}, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
 	log.Debug().Str("Structpath", structPath).Msg("Populating structfields")
 	structValue := reflect.ValueOf(structPointer).Elem() // This is yet an empty struct
 	structType := structValue.Type()
@@ -326,8 +329,11 @@ func populateStructFields(structPath string, structPointer interface{}, row map[
 			fieldNameLower := strings.ToLower(fieldName)
 
 			if fieldNameLower == strings.ToLower(key) {
-				err := SetField(structPath, structPointer, fieldName, value, log)
-				if err != nil {
+				if err := SetField(structPath, structPointer, fieldName, value, log); err != nil {
+					return err
+				}
+				fhirPath := structPath + "." + strings.ToLower(fieldName)
+				if _, err := applyFilter(fhirPath, reflect.ValueOf(value), searchParameterMap, log); err != nil {
 					return err
 				}
 			}
@@ -376,13 +382,18 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 		if unmarshalJSONMethod.IsValid() {
 			//Map value first
 			stringInputValue := getStringValue(reflect.ValueOf(inputValue))
-			//realFhirPath := fhirPath + "." + strings.ToLower(name)
-			// log.Debug().Msgf("RealfhirPath: %s, Field: %s, Value: %v", realFhirPath, name, stringValue)
+
+			// TODO: check if this is the rigth place to map the code, what if there is no unmarshalJSON method?
+			//fhirPath := structPath + "." + strings.ToLower(structFieldName)
+			// log.Debug().Msgf("fhirPath: %s, Field: %s, Value: %v", fhirPath, strings.ToLower(structFieldName), stringInputValue)
 			target, err := mapConceptCode(stringInputValue, "Patient.gender", log)
 			if err != nil {
 				return fmt.Errorf("failed to map concept code: %v", err)
 			}
-			inputValue = target.code
+			if target.code != "" {
+				inputValue = target.code // TODO: Check what happens if a code is not mapped
+			}
+
 			// Convert the value to JSON
 			jsonInputValue, err := json.Marshal(inputValue)
 			if err != nil {
@@ -463,30 +474,31 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 
 	return nil
 }
-func applyFilter(field reflect.Value, fhirPath string, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	searchParameter, ok := searchParameterMap[fhirPath]
+func applyFilter(structPath string, structFieldValue reflect.Value, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	searchParameter, ok := searchParameterMap[structPath]
 	if !ok {
 		log.Debug().
-			Str("field", fhirPath).
-			Msg("No filter found for fhirPath")
-		return &FilterResult{Passed: true, Message: fmt.Sprintf("No filter defined for: %s", fhirPath)}, nil
+			Str("Structpath", structPath).
+			Msg("No filter found for structPath")
+		return &FilterResult{Passed: true, Message: fmt.Sprintf("No filter defined for: %s", structPath)}, nil
 	}
 
-	if field.Kind() == reflect.Slice {
+	if structFieldValue.Kind() == reflect.Slice {
 		// For slices, we delegate to populateSlice which now handles the filtering
 		return &FilterResult{Passed: true}, nil
 	}
 
-	filterResult, err := FilterField(field, searchParameter, fhirPath, log)
+	filterResult, err := FilterField(structFieldValue, searchParameter, structPath, log)
 	if err != nil {
 		return nil, err
 	}
 	log.Debug().
-		Str("field", fhirPath).
+		Str("structpath", structPath).
+		Str("structfield", structFieldValue.Type().Name()).
 		Bool("passed", filterResult.Passed).
 		Msg("Apply filter result")
 	if !filterResult.Passed {
-		return &FilterResult{Passed: false, Message: fmt.Sprintf("Field filtered out: %s", fhirPath)}, nil
+		return &FilterResult{Passed: false, Message: fmt.Sprintf("Field filtered out: %s", structPath)}, nil
 	}
 
 	return &FilterResult{Passed: true}, nil
