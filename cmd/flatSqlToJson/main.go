@@ -86,7 +86,7 @@ func main() {
 	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) { w.Out = os.Stdout })).With().Timestamp().Caller().Logger()
 	log.Debug().Msg("Starting fenix")
 
-	db, err := sqlx.Connect("postgres", "postgres://postgres:mysecretpassword@localhost:5432/public?sslmode=disable")
+	db, err := sqlx.Connect("postgres", "postgres://postgres:mysecretpassword@localhost:5432/tsl_employee?sslmode=disable")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to the database")
 	}
