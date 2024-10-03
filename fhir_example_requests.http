@@ -13,7 +13,6 @@ GET {{base}}/Patient?name=smith
 GET {{base}}/Observation
     ?subject=8bfc938e-7836-4e96-b0d8-92756601e0b5
     &_elements=id,code,value
-    &code=55284-4
 
 ### Request 4
  GET {{base}}/Patient?birthdate=ge2022-01-01

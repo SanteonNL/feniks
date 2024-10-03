@@ -345,6 +345,14 @@ func populateStructFields(structPath string, structPointer interface{}, row RowD
 			}
 		}
 	}
+
+	// Set the ID field if it exists in the struct
+	idField := structValue.FieldByName("Id")
+	if idField.IsValid() && idField.CanSet() {
+		if err := SetField(structPath, structPointer, "Id", row.ID, log); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
