@@ -18,23 +18,131 @@ type RowData struct {
 	Data     map[string]interface{}
 }
 
+type ResourceResult map[string][]RowData
+
 type DataSource interface {
-	Read(string) (map[string][]RowData, error)
+	Read(string) (ResourceResult, error)
+	ReadPerPatient(string) ([]ResourceResult, error)
 }
 
-func (s *SQLDataSource) Read(patientID string) (map[string][]RowData, error) {
-	result := make(map[string][]RowData)
+type SQLDataSource struct {
+	db    *sqlx.DB
+	query string
+	log   zerolog.Logger
+}
 
+func (s *SQLDataSource) processRows(rows *sqlx.Rows) (ResourceResult, error) {
+	result := make(ResourceResult)
+
+	for rows.Next() {
+		row := make(map[string]interface{})
+		err := rows.MapScan(row)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning row: %w", err)
+		}
+
+		// Remove NULL values
+		for key, value := range row {
+			if value == nil {
+				delete(row, key)
+			}
+		}
+
+		id, _ := row["id"].(string)
+		parentID, _ := row["parent_id"].(string)
+		fhirPath, _ := row["fhir_path"].(string)
+		s.log.Debug().Str("id", id).Str("parentID", parentID).Str("fhirPath", fhirPath).Msg("Found row data")
+
+		delete(row, "id")
+		delete(row, "parent_id")
+		delete(row, "fhir_path")
+
+		mainRow := RowData{
+			ID:       id,
+			ParentID: parentID,
+			Data:     make(map[string]interface{}),
+		}
+
+		nestedFields := make(map[string]map[string]interface{})
+
+		for key, value := range row {
+			parts := strings.Split(key, ".")
+			if len(parts) > 1 {
+				nestedFHIRPath := fhirPath + "." + parts[0]
+				s.log.Debug().Str("nestedFHIRPath", nestedFHIRPath).Msg("Found nested field")
+				if nestedFields[nestedFHIRPath] == nil {
+					nestedFields[nestedFHIRPath] = make(map[string]interface{})
+				}
+				nestedFields[nestedFHIRPath][parts[1]] = value
+			} else {
+				s.log.Debug().Str("key", key).Msg("Found main field")
+				mainRow.Data[key] = value
+			}
+		}
+
+		result[fhirPath] = append(result[fhirPath], mainRow)
+
+		for nestedPath, nestedData := range nestedFields {
+			nestedRow := RowData{
+				ID:       id,
+				ParentID: id,
+				Data:     nestedData,
+			}
+			result[nestedPath] = append(result[nestedPath], nestedRow)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over rows: %w", err)
+	}
+
+	return result, nil
+}
+
+func (s *SQLDataSource) Read(patientID string) (ResourceResult, error) {
 	rows, err := s.db.Queryx(s.query)
 	if err != nil {
 		return nil, fmt.Errorf("error executing query: %w", err)
 	}
 	defer rows.Close()
 
+	result := make(ResourceResult)
+
+	for {
+		partialResult, err := s.processRows(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		// Merge partialResult into result
+		for fhirPath, rowData := range partialResult {
+			result[fhirPath] = append(result[fhirPath], rowData...)
+		}
+
+		// Move to the next result set
+		if !rows.NextResultSet() {
+			break // No more result sets
+		}
+	}
+
+	return result, nil
+}
+
+func (s *SQLDataSource) ReadPerPatient(patientID string) ([]ResourceResult, error) {
+	query := strings.ReplaceAll(s.query, ":Patient.id", fmt.Sprintf("'%s'", patientID))
+
+	rows, err := s.db.Queryx(query)
+	if err != nil {
+		return nil, fmt.Errorf("error executing query: %w", err)
+	}
+	defer rows.Close()
+
+	resources := make(map[string]ResourceResult)
+
 	for {
 		for rows.Next() {
 			row := make(map[string]interface{})
-			err = rows.MapScan(row)
+			err := rows.MapScan(row)
 			if err != nil {
 				return nil, fmt.Errorf("error scanning row: %w", err)
 			}
@@ -49,11 +157,12 @@ func (s *SQLDataSource) Read(patientID string) (map[string][]RowData, error) {
 			id, _ := row["id"].(string)
 			parentID, _ := row["parent_id"].(string)
 			fhirPath, _ := row["fhir_path"].(string)
-			s.log.Debug().Str("id", id).Str("parentID", parentID).Str("fhirPath", fhirPath).Msg("Found row data")
+			resourceID, _ := row["resource_id"].(string)
+			s.log.Debug().Str("id", id).Str("parentID", parentID).Str("fhirPath", fhirPath).Str("resourceID", resourceID).Msg("Found row data")
 
-			delete(row, "id")
 			delete(row, "parent_id")
 			delete(row, "fhir_path")
+			delete(row, "resource_id")
 
 			mainRow := RowData{
 				ID:       id,
@@ -78,7 +187,10 @@ func (s *SQLDataSource) Read(patientID string) (map[string][]RowData, error) {
 				}
 			}
 
-			result[fhirPath] = append(result[fhirPath], mainRow)
+			if resources[resourceID] == nil {
+				resources[resourceID] = make(ResourceResult)
+			}
+			resources[resourceID][fhirPath] = append(resources[resourceID][fhirPath], mainRow)
 
 			for nestedPath, nestedData := range nestedFields {
 				nestedRow := RowData{
@@ -86,7 +198,7 @@ func (s *SQLDataSource) Read(patientID string) (map[string][]RowData, error) {
 					ParentID: id,
 					Data:     nestedData,
 				}
-				result[nestedPath] = append(result[nestedPath], nestedRow)
+				resources[resourceID][nestedPath] = append(resources[resourceID][nestedPath], nestedRow)
 			}
 		}
 
@@ -94,19 +206,18 @@ func (s *SQLDataSource) Read(patientID string) (map[string][]RowData, error) {
 			return nil, fmt.Errorf("error iterating over rows: %w", err)
 		}
 
-		// Move to the next result set
 		if !rows.NextResultSet() {
 			break // No more result sets
 		}
 	}
 
-	return result, nil
-}
+	// Convert map of ResourceResults to slice of ResourceResults
+	results := make([]ResourceResult, 0, len(resources))
+	for _, result := range resources {
+		results = append(results, result)
+	}
 
-type SQLDataSource struct {
-	db    *sqlx.DB
-	query string
-	log   zerolog.Logger
+	return results, nil
 }
 
 func NewSQLDataSource(db *sqlx.DB, query string, log zerolog.Logger) *SQLDataSource {

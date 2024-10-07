@@ -30,6 +30,11 @@ type target struct {
 
 var globalConceptMaps ConceptMapperMap
 
+var FHIRResourceMap = map[string]func() interface{}{
+	"Patient":     func() interface{} { return &fhir.Patient{} },
+	"Observation": func() interface{} { return &fhir.Observation{} },
+}
+
 func initializeGenderConceptMap() {
 	globalConceptMaps = ConceptMapperMap{
 		"Patient.gender": {
@@ -93,7 +98,7 @@ func main() {
 	defer db.Close()
 
 	// Set up data source
-	queryPath := util.GetAbsolutePath("queries/hix/flat/patient.sql")
+	queryPath := util.GetAbsolutePath("queries/hix/flat/Observation_hix_metingen_metingen.sql")
 	queryBytes, err := os.ReadFile(queryPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to read query file")
@@ -101,41 +106,52 @@ func main() {
 	query := string(queryBytes)
 	dataSource := NewSQLDataSource(db, query, log)
 
-	data, err := dataSource.Read("123")
+	data, err := dataSource.ReadPerPatient("456")
 	if err != nil {
 		log.Debug().Err(err).Msg("Failed to read data")
 	}
 	log.Debug().Interface("dataMap", data).Msg("Flat data before mapping to FHIR")
 
+	if len(data) > 0 {
+		firstElement := data[0]
+		jsonData, err := json.MarshalIndent(firstElement, "", "  ")
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to marshal data to JSON")
+		}
+
+		outputPath := "output/temp/dataMap.json"
+		err = os.MkdirAll("output/temp", os.ModePerm)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to create output directory")
+		}
+
+		err = os.WriteFile(outputPath, jsonData, 0644)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to write JSON data to file")
+		}
+
+		log.Debug().Str("outputPath", outputPath).Msg("Successfully wrote data to JSON file")
+	} else {
+		log.Debug().Msg("No data available to write to JSON file")
+	}
+
 	// Set up search parameters
 	searchParameterMap := SearchParameterMap{
-		"Patient.identifier": SearchParameter{
-			Code:  "identifier",
-			Type:  "token",
-			Value: "https://santeon.nl|123",
-		},
+		// "Patient.identifier": SearchParameter{
+		// 	Code:  "identifier",
+		// 	Type:  "token",
+		// 	Value: "https://santeon.nl|123",
+		// },
 	}
 
 	// Initialize concept maps
 	initializeGenderConceptMap()
 
 	//Process data
-	patient, filterMessage, err := ProcessDataSource(dataSource, searchParameterMap, log)
+	patientID := "456"
+	_, err = ProcessDataSource(dataSource, "Observation", patientID, searchParameterMap, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to process data source")
-	}
-
-	if filterMessage != "" {
-		log.Info().Msg(filterMessage)
-		fmt.Println("No data returned due to filtering")
-	} else {
-		// Output the result
-		jsonData, err := json.MarshalIndent(patient, "", "  ")
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to marshal patient to JSON")
-		}
-		fmt.Println("Patient data:")
-		fmt.Println(string(jsonData))
 	}
 
 	endTime := time.Now()
@@ -143,35 +159,65 @@ func main() {
 	log.Debug().Msgf("Execution time: %s", duration)
 }
 
-func ProcessDataSource(ds DataSource, searchParameterMap SearchParameterMap, log zerolog.Logger) (*fhir.Patient, string, error) {
-	data, err := ds.Read("123")
+func ProcessDataSource(ds DataSource, resourceType string, patientID string, searchParameterMap SearchParameterMap, log zerolog.Logger) ([]interface{}, error) {
+	// Get the factory function for the specified resource type
+	factory, ok := FHIRResourceMap[resourceType]
+	if !ok {
+		return nil, fmt.Errorf("unsupported FHIR resource type: %s", resourceType)
+	}
+
+	// Read data for the specified patient
+	resourceResults, err := ds.ReadPerPatient(patientID)
 	if err != nil {
-		return nil, "", err
-	}
-	log.Debug().Interface("dataMap", data).Msg("Flat data before mapping to FHIR")
-
-	patient := &fhir.Patient{}
-	patientStructValue := reflect.ValueOf(patient).Elem()
-
-	filterResult, err := populateResourceStruct("", patientStructValue, "", data, searchParameterMap, log)
-	if err != nil {
-		return nil, "", err
+		return nil, fmt.Errorf("error reading data: %w", err)
 	}
 
-	if !filterResult.Passed {
-		return &fhir.Patient{}, filterResult.Message, nil
+	log.Debug().Int("resourceCount", len(resourceResults)).Str("resourceType", resourceType).Str("patientID", patientID).Msg("Retrieved resource data")
+
+	var resources []interface{}
+
+	for _, resourceResult := range resourceResults {
+		// Create a new instance of the resource
+		resource := factory()
+		resourceValue := reflect.ValueOf(resource).Elem()
+
+		// Populate the resource struct
+		filterResult, err := populateResourceStruct(resourceType, resourceValue, resourceResult, searchParameterMap, log)
+		if err != nil {
+			log.Error().Err(err).Str("patientID", patientID).Msg("Error populating resource struct")
+			continue
+		}
+
+		if !filterResult.Passed {
+			log.Info().Str("patientID", patientID).Str("message", filterResult.Message).Msg("Resource filtered out")
+			continue
+		}
+
+		resources = append(resources, resource)
+
+		// Print the resource using MarshalIndent
+		marshalFunc := reflect.ValueOf(resource).MethodByName("MarshalJSON")
+		if !marshalFunc.IsValid() {
+			log.Error().Str("patientID", patientID).Msg("MarshalJSON method not found")
+			continue
+		}
+
+		// Output the result
+		jsonData, err := json.MarshalIndent(resource, "", "  ")
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to marshal patient to JSON")
+		}
+		fmt.Println("Patient data:")
+		fmt.Println(string(jsonData))
+
 	}
 
-	return patient, "", nil
+	return resources, nil
 }
 
-func populateResourceStruct(structPath string, value reflect.Value, parentID string, rowDataMap map[string][]RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	if structPath == "" {
-		structPath = value.Type().Name()
-		log.Debug().Str("Name", structPath).Msg("Populating resource struct")
-	}
+func populateResourceStruct(resourceType string, field reflect.Value, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 
-	filterResult, err := determineType(structPath, value, parentID, rowDataMap, searchParameterMap, log)
+	filterResult, err := determineType(resourceType, field, "", resourceResult, searchParameterMap, log)
 	if err != nil {
 		return nil, err
 	}
@@ -182,9 +228,9 @@ func populateResourceStruct(structPath string, value reflect.Value, parentID str
 	return &FilterResult{Passed: true}, nil
 }
 
-func determineType(structPath string, value reflect.Value, parentID string, rowDataMap map[string][]RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func determineType(structPath string, value reflect.Value, parentID string, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	log.Debug().Str("StructPath", structPath).Msg("Determining type")
-	rows, exists := rowDataMap[structPath]
+	rows, exists := resourceResult[structPath]
 	if !exists {
 		log.Debug().Msgf("No data found for: %s", structPath)
 		return &FilterResult{Passed: true}, nil
@@ -197,30 +243,32 @@ func determineType(structPath string, value reflect.Value, parentID string, rowD
 		// However, the patient resource does not contain slices of basic types, so this I am not sure if it works well if for example
 		// the resource humanName is filled directly as resource instead of as struct within resource. That contains several slices of strings.
 		// TODO: test this with a resource that contains slices of basic types.
-		return populateSlice(structPath, value, parentID, rows, rowDataMap, searchParameterMap, log)
+		return populateSlice(structPath, value, parentID, rows, resourceResult, searchParameterMap, log)
 	case reflect.Struct:
 		log.Debug().Str("Structpath", structPath).Msgf("Type is struct")
-		return populateStruct(structPath, value, parentID, rows, rowDataMap, searchParameterMap, log)
+		return populateStruct(structPath, value, parentID, rows, resourceResult, searchParameterMap, log)
 	case reflect.Ptr:
 		log.Debug().Str("Structpath", structPath).Msgf("Type is pointer")
 		if value.IsNil() {
 			value.Set(reflect.New(value.Type().Elem()))
 		}
 		log.Debug().Str("Structpath", structPath).Msgf("Changed nil pointer to new instance of %s", value.Type().Elem())
-		return determineType(structPath, value.Elem(), parentID, rowDataMap, searchParameterMap, log)
+		return determineType(structPath, value.Elem(), parentID, resourceResult, searchParameterMap, log)
 	default:
 		log.Debug().Str("StructPath", structPath).Msgf("Type is basic type")
 		return populateBasicType(structPath, value, parentID, rows, structPath, searchParameterMap, log)
 	}
 }
 
-func populateSlice(structPath string, value reflect.Value, parentID string, rows []RowData, rowDataMap map[string][]RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func populateSlice(structPath string, value reflect.Value, parentID string, rows []RowData, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	log.Debug().Str("structPath", structPath).Msg("Populating slice")
 	anyElementPassed := false
 	for _, row := range rows {
-		if row.ParentID == parentID || parentID == "" {
+		log.Debug().Str("structPath", structPath).Msgf("Row: %+v and parentID %s", row, parentID)
+		if row.ParentID == parentID || row.ParentID == "" {
+			log.Debug().Str("structPath", structPath).Msg("Populating slice element")
 			valueElement := reflect.New(value.Type().Elem()).Elem()
-			if err := populateStructAndNestedFields(structPath, valueElement, row, rowDataMap, searchParameterMap, log); err != nil {
+			if err := populateStructAndNestedFields(structPath, valueElement, row, resourceResult, searchParameterMap, log); err != nil {
 				return nil, err
 			}
 
@@ -238,6 +286,8 @@ func populateSlice(structPath string, value reflect.Value, parentID string, rows
 
 			// Always add the element to the slice, regardless of filter result
 			value.Set(reflect.Append(value, valueElement))
+		} else {
+			log.Debug().Str("structPath", structPath).Msg("Skipping slice")
 		}
 	}
 
@@ -248,11 +298,11 @@ func populateSlice(structPath string, value reflect.Value, parentID string, rows
 	return &FilterResult{Passed: false, Message: fmt.Sprintf("No elements in slice at structpath %s passed filter", structPath)}, nil
 }
 
-func populateStruct(structPath string, value reflect.Value, parentID string, rows []RowData, resultMap map[string][]RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func populateStruct(structPath string, value reflect.Value, parentID string, rows []RowData, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	log.Debug().Str("Structpath", structPath).Msg("Populating struct")
 	for _, row := range rows {
 		if row.ParentID == parentID || parentID == "" {
-			if err := populateStructAndNestedFields(structPath, value, row, resultMap, searchParameterMap, log); err != nil {
+			if err := populateStructAndNestedFields(structPath, value, row, resourceResult, searchParameterMap, log); err != nil {
 				return nil, err
 			}
 
@@ -271,25 +321,25 @@ func populateStruct(structPath string, value reflect.Value, parentID string, row
 }
 
 // TODO nestedelements -> nested felds
-func populateStructAndNestedFields(structPath string, valueElement reflect.Value, row RowData, resultMap map[string][]RowData, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
+func populateStructAndNestedFields(structPath string, valueElement reflect.Value, row RowData, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
 	log.Debug().Str("structPath", structPath).Msg("Populating struct and nested fields")
 	if err := populateStructFields(structPath, valueElement.Addr().Interface(), row, searchParameterMap, log); err != nil {
 		return err
 	}
 
 	currentID := row.ID
-	return populateNestedFields(structPath, valueElement, resultMap, currentID, searchParameterMap, log)
+	return populateNestedFields(structPath, valueElement, resourceResult, currentID, searchParameterMap, log)
 }
 
-func populateNestedFields(parentName string, parentValue reflect.Value, resultMap map[string][]RowData, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
+func populateNestedFields(parentName string, parentValue reflect.Value, resourceResult ResourceResult, parentID string, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
 	log.Debug().Msgf("Populating nested fields for %s", parentName)
 	for i := 0; i < parentValue.NumField(); i++ {
 		childValue := parentValue.Field(i)
 		childFieldName := parentValue.Type().Field(i).Name
 		childName := fmt.Sprintf("%s.%s", parentName, strings.ToLower(childFieldName))
 
-		if hasDataForPath(resultMap, childName) {
-			filterResult, err := determineType(childName, childValue, parentID, resultMap, searchParameterMap, log)
+		if hasDataForPath(resourceResult, childName) {
+			filterResult, err := determineType(childName, childValue, parentID, resourceResult, searchParameterMap, log)
 			if err != nil {
 				return err
 			}
@@ -387,35 +437,16 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 		return nil
 	}
 
-	// Check if the field is a pointer to a type that implements UnmarshalJSON
-	if structField.Kind() == reflect.Ptr {
-		if structField.IsNil() {
-			structField.Set(reflect.New(structField.Type().Elem()))
-		}
-		unmarshalJSONMethod := structField.MethodByName("UnmarshalJSON")
-		if unmarshalJSONMethod.IsValid() {
-			//Map value first
-			stringInputValue := getStringValue(reflect.ValueOf(inputValue))
-
-			// TODO: check if this is the rigth place to map the code, what if there is no unmarshalJSON method?
-			//fhirPath := structPath + "." + strings.ToLower(structFieldName)
-			// log.Debug().Msgf("fhirPath: %s, Field: %s, Value: %v", fhirPath, strings.ToLower(structFieldName), stringInputValue)
-			target, err := mapConceptCode(stringInputValue, "Patient.gender", log)
+	// Try UnmarshalJSON for the field and its address
+	for _, field := range []reflect.Value{structField, structField.Addr()} {
+		if field.CanInterface() && field.Type().Implements(reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()) {
+			byteValue, err := getByteValue(inputValue)
 			if err != nil {
-				return fmt.Errorf("failed to map concept code: %v", err)
-			}
-			if target.code != "" {
-				inputValue = target.code // TODO: Check what happens if a code is not mapped
+				return fmt.Errorf("failed to convert input to []byte: %v", err)
 			}
 
-			// Convert the value to JSON
-			jsonInputValue, err := json.Marshal(inputValue)
-			if err != nil {
-				return fmt.Errorf("failed to marshal value to JSON: %v", err)
-			}
-
-			// Call UnmarshalJSON
-			results := unmarshalJSONMethod.Call([]reflect.Value{reflect.ValueOf(jsonInputValue)})
+			method := field.MethodByName("UnmarshalJSON")
+			results := method.Call([]reflect.Value{reflect.ValueOf(byteValue)})
 			if len(results) > 0 && !results[0].IsNil() {
 				return results[0].Interface().(error)
 			}
@@ -488,7 +519,27 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 
 	return nil
 }
+
+func getByteValue(v interface{}) ([]byte, error) {
+	switch value := v.(type) {
+	case string:
+		return []byte(value), nil
+	case []byte:
+		return value, nil
+	default:
+		// If it's not a string or []byte, try to marshal it to JSON
+		return json.Marshal(v)
+	}
+}
+
 func applyFilter(structPath string, structFieldValue reflect.Value, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Str("structPath", structPath).Msg("Applying filter")
+
+	if len(searchParameterMap) == 0 {
+		log.Debug().Msg("SearchParameterMap is empty, passing filter by default")
+		return &FilterResult{Passed: true}, nil
+	}
+
 	searchParameter, ok := searchParameterMap[structPath]
 	if !ok {
 		log.Debug().
