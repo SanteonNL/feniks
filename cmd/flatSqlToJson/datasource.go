@@ -212,6 +212,7 @@ func (s *SQLDataSource) ReadPerPatient(patientID string) ([]ResourceResult, erro
 	}
 
 	// Convert map of ResourceResults to slice of ResourceResults
+	//TODO  Make sure to return map instead of converting to a slice
 	results := make([]ResourceResult, 0, len(resources))
 	for _, result := range resources {
 		results = append(results, result)

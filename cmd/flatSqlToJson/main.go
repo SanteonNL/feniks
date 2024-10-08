@@ -272,7 +272,7 @@ func populateSlice(structPath string, value reflect.Value, parentID string, rows
 				return nil, err
 			}
 
-			filterResult, err := applyFilter(structPath, valueElement, searchParameterMap, log)
+			filterResult, err := ApplyFilter(structPath, valueElement, searchParameterMap, log)
 			if err != nil {
 				return nil, err
 			}
@@ -306,7 +306,7 @@ func populateStruct(structPath string, value reflect.Value, parentID string, row
 				return nil, err
 			}
 
-			filterResult, err := applyFilter(structPath, value, searchParameterMap, log)
+			filterResult, err := ApplyFilter(structPath, value, searchParameterMap, log)
 			if err != nil {
 				return nil, err
 			}
@@ -364,7 +364,7 @@ func populateBasicType(name string, field reflect.Value, parentID string, rows [
 					if err := SetField(fieldName, field.Addr().Interface(), name, value, log); err != nil {
 						return nil, err
 					}
-					return applyFilter(fieldName, field, searchParameterMap, log)
+					return ApplyFilter(fieldName, field, searchParameterMap, log)
 				}
 			}
 		}
@@ -389,7 +389,7 @@ func populateStructFields(structPath string, structPointer interface{}, row RowD
 					return err
 				}
 				fhirPath := structPath + "." + strings.ToLower(fieldName)
-				if _, err := applyFilter(fhirPath, reflect.ValueOf(value), searchParameterMap, log); err != nil {
+				if _, err := ApplyFilter(fhirPath, reflect.ValueOf(value), searchParameterMap, log); err != nil {
 					return err
 				}
 			}
@@ -530,43 +530,6 @@ func getByteValue(v interface{}) ([]byte, error) {
 		// If it's not a string or []byte, try to marshal it to JSON
 		return json.Marshal(v)
 	}
-}
-
-func applyFilter(structPath string, structFieldValue reflect.Value, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	log.Debug().Str("structPath", structPath).Msg("Applying filter")
-
-	if len(searchParameterMap) == 0 {
-		log.Debug().Msg("SearchParameterMap is empty, passing filter by default")
-		return &FilterResult{Passed: true}, nil
-	}
-
-	searchParameter, ok := searchParameterMap[structPath]
-	if !ok {
-		log.Debug().
-			Str("Structpath", structPath).
-			Msg("No filter found for structPath")
-		return &FilterResult{Passed: true, Message: fmt.Sprintf("No filter defined for: %s", structPath)}, nil
-	}
-
-	if structFieldValue.Kind() == reflect.Slice {
-		// For slices, we delegate to populateSlice which now handles the filtering
-		return &FilterResult{Passed: true}, nil
-	}
-
-	filterResult, err := FilterField(structFieldValue, searchParameter, structPath, log)
-	if err != nil {
-		return nil, err
-	}
-	log.Debug().
-		Str("structpath", structPath).
-		Str("structfield", structFieldValue.Type().Name()).
-		Bool("passed", filterResult.Passed).
-		Msg("Apply filter result")
-	if !filterResult.Passed {
-		return &FilterResult{Passed: false, Message: fmt.Sprintf("Field filtered out: %s", structPath)}, nil
-	}
-
-	return &FilterResult{Passed: true}, nil
 }
 
 func hasDataForPath(resultMap map[string][]RowData, path string) bool {

@@ -26,6 +26,43 @@ type FilterResult struct {
 	Message string
 }
 
+func ApplyFilter(structPath string, structFieldValue reflect.Value, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Str("structPath", structPath).Msg("Applying filter")
+
+	if len(searchParameterMap) == 0 {
+		log.Debug().Msg("SearchParameterMap is empty, passing filter by default")
+		return &FilterResult{Passed: true}, nil
+	}
+
+	searchParameter, ok := searchParameterMap[structPath]
+	if !ok {
+		log.Debug().
+			Str("Structpath", structPath).
+			Msg("No filter found for structPath")
+		return &FilterResult{Passed: true, Message: fmt.Sprintf("No filter defined for: %s", structPath)}, nil
+	}
+
+	if structFieldValue.Kind() == reflect.Slice {
+		// For slices, we delegate to populateSlice which now handles the filtering
+		return &FilterResult{Passed: true}, nil
+	}
+
+	filterResult, err := FilterField(structFieldValue, searchParameter, structPath, log)
+	if err != nil {
+		return nil, err
+	}
+	log.Debug().
+		Str("structpath", structPath).
+		Str("structfield", structFieldValue.Type().Name()).
+		Bool("passed", filterResult.Passed).
+		Msg("Apply filter result")
+	if !filterResult.Passed {
+		return &FilterResult{Passed: false, Message: fmt.Sprintf("Field filtered out: %s", structPath)}, nil
+	}
+
+	return &FilterResult{Passed: true}, nil
+}
+
 func FilterField(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
 
 	if field.IsZero() {
