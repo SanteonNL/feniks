@@ -28,7 +28,7 @@ func NewArtDecorApiClient() *ArtDecorApiClient {
 		Timeout: 60 * time.Second,
 	}
 	return &ArtDecorApiClient{
-		BaseURI:    os.Getenv("ART_URL"),
+		BaseURI:    os.Getenv("ART_API_URL"),
 		HTTPClient: retryClient.StandardClient(),
 	}
 }
