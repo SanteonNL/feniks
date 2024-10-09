@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"log"
 	"os"
@@ -179,7 +180,7 @@ func (c *ArtDecorApiClient) CreateConceptMap(conceptMap DECORConceptMap, queryPa
 	return nil
 }
 
-func (c *ArtDecorApiClient) ReadConceptMap(queryParams any) (*DECORConceptMap, error) {
+func (c *ArtDecorApiClient) ReadConceptMap(queryParams any) (*[]DECORConceptMap, error) {
 	var endpoint string = "/conceptmap"
 	var validParams = []string{
 		"codeSystemEffectiveDate", "codeSystemEffectiveDate:source", "codeSystemEffectiveDate:target",
@@ -198,14 +199,21 @@ func (c *ArtDecorApiClient) ReadConceptMap(queryParams any) (*DECORConceptMap, e
 	}
 	log.Default().Println(endpoint)
 
-	resp := new(any)
+	// resp := new(any)
+	resp := new(body.GetConceptMapListResponse)
 	if err := c.get(endpoint, resp); err != nil {
 		return nil, err
 	}
-	log.Default().Printf("Response %+v", *resp)
-	// respMap := (*resp).(map[string]interface{})
-	// log.Default().Printf("ResponseMAP %+v", respMap["conceptMap"])
 
-	var cm = new(DECORConceptMap)
-	return cm, nil
+	b, err := json.Marshal(resp.ConceptMap)
+	if err != nil {
+		return nil, err
+	}
+
+	cms := make([]DECORConceptMap, 0)
+	if err := json.Unmarshal(b, &cms); err != nil {
+		return nil, err
+	}
+	log.Default().Printf("Response %+v\n", cms)
+	return &cms, nil
 }
