@@ -98,7 +98,8 @@ func main() {
 	defer db.Close()
 
 	// Set up data source
-	queryPath := util.GetAbsolutePath("queries/hix/flat/Observation_hix_metingen_metingen.sql")
+	//queryPath := util.GetAbsolutePath("queries/hix/flat/Observation_hix_metingen_metingen.sql")
+	queryPath := util.GetAbsolutePath("queries/hix/flat/patient.sql")
 	queryBytes, err := os.ReadFile(queryPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to read query file")
@@ -148,8 +149,9 @@ func main() {
 	initializeGenderConceptMap()
 
 	//Process data
-	patientID := "456"
+	patientID := "123"
 	_, err = ProcessDataSource(dataSource, "Observation", patientID, searchParameterMap, log)
+	_, err = ProcessDataSource(dataSource, "Patient", patientID, searchParameterMap, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to process data source")
 	}
@@ -378,6 +380,8 @@ func populateStructFields(structPath string, structPointer interface{}, row RowD
 	structValue := reflect.ValueOf(structPointer).Elem() // This is yet an empty struct
 	structType := structValue.Type()
 	log.Debug().Msgf("Struct type: %s", structType.Name())
+
+	if structType == "CodeableConcept" | 
 
 	for key, value := range row.Data {
 		for i := 0; i < structType.NumField(); i++ {
