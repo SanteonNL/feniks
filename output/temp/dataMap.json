@@ -1,18 +1,18 @@
 {
   "Observation": [
     {
-      "ID": "9",
+      "ID": "21",
       "ParentID": "",
       "Data": {
-        "id": "9",
+        "id": "21",
         "status": "final"
       }
     }
   ],
   "Observation.Patient": [
     {
-      "ID": "9",
-      "ParentID": "9",
+      "ID": "21",
+      "ParentID": "21",
       "Data": {
         "id": "456"
       }
@@ -20,17 +20,17 @@
   ],
   "Observation.category": [
     {
-      "ID": "9",
+      "ID": "21",
       "ParentID": "",
       "Data": {
-        "id": "9"
+        "id": "21"
       }
     }
   ],
   "Observation.category.Patient": [
     {
-      "ID": "9",
-      "ParentID": "9",
+      "ID": "21",
+      "ParentID": "21",
       "Data": {
         "id": "456"
       }
@@ -38,20 +38,20 @@
   ],
   "Observation.category.coding": [
     {
-      "ID": "9",
+      "ID": "21",
       "ParentID": "",
       "Data": {
         "code": "laboratory",
         "display": "Laboratory",
-        "id": "9",
+        "id": "21",
         "system": "http://terminology.hl7.org/CodeSystem/observation-category"
       }
     }
   ],
   "Observation.category.coding.Patient": [
     {
-      "ID": "9",
-      "ParentID": "9",
+      "ID": "21",
+      "ParentID": "21",
       "Data": {
         "id": "456"
       }
@@ -59,17 +59,17 @@
   ],
   "Observation.effective": [
     {
-      "ID": "9",
-      "ParentID": "9",
+      "ID": "21",
+      "ParentID": "21",
       "Data": {
-        "dateTime": "2022-10-30T19:19:19Z"
+        "dateTime": "2023-06-17T14:45:00Z"
       }
     }
   ],
   "Observation.subject": [
     {
-      "ID": "9",
-      "ParentID": "9",
+      "ID": "21",
+      "ParentID": "21",
       "Data": {
         "reference": "Patient/456"
       }
@@ -77,11 +77,11 @@
   ],
   "Observation.value": [
     {
-      "ID": "9",
-      "ParentID": "9",
+      "ID": "21",
+      "ParentID": "21",
       "Data": {
-        "type": "valueCodeableConcept",
-        "valueCodeableConcept": "unknown"
+        "type": "valueQuantity",
+        "valueQuantity": "/min"
       }
     }
   ]

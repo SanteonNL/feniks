@@ -217,7 +217,7 @@ func ProcessDataSource(ds DataSource, resourceType string, patientID string, sea
 
 func populateResourceStruct(resourceType string, field reflect.Value, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 
-	filterResult, err := determineType(resourceType, field, "", resourceResult, searchParameterMap, log)
+	filterResult, err := determinePopulateType(resourceType, field, "", resourceResult, searchParameterMap, log)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func populateResourceStruct(resourceType string, field reflect.Value, resourceRe
 	return &FilterResult{Passed: true}, nil
 }
 
-func determineType(structPath string, value reflect.Value, parentID string, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
+func determinePopulateType(structPath string, value reflect.Value, parentID string, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
 	log.Debug().Str("StructPath", structPath).Msg("Determining type")
 	rows, exists := resourceResult[structPath]
 	if !exists {
@@ -253,7 +253,7 @@ func determineType(structPath string, value reflect.Value, parentID string, reso
 			value.Set(reflect.New(value.Type().Elem()))
 		}
 		log.Debug().Str("Structpath", structPath).Msgf("Changed nil pointer to new instance of %s", value.Type().Elem())
-		return determineType(structPath, value.Elem(), parentID, resourceResult, searchParameterMap, log)
+		return determinePopulateType(structPath, value.Elem(), parentID, resourceResult, searchParameterMap, log)
 	default:
 		log.Debug().Str("StructPath", structPath).Msgf("Type is basic type")
 		return populateBasicType(structPath, value, parentID, rows, structPath, searchParameterMap, log)
@@ -339,7 +339,7 @@ func populateNestedFields(parentName string, parentValue reflect.Value, resource
 		childName := fmt.Sprintf("%s.%s", parentName, strings.ToLower(childFieldName))
 
 		if hasDataForPath(resourceResult, childName) {
-			filterResult, err := determineType(childName, childValue, parentID, resourceResult, searchParameterMap, log)
+			filterResult, err := determinePopulateType(childName, childValue, parentID, resourceResult, searchParameterMap, log)
 			if err != nil {
 				return err
 			}
