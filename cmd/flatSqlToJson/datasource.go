@@ -6,19 +6,219 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
 )
 
+type RowData struct {
+	ID       string
+	ParentID string
+	Data     map[string]interface{}
+}
+
+type ResourceResult map[string][]RowData
+
 type DataSource interface {
-	Read() (map[string][]map[string]interface{}, error)
+	Read(string) (ResourceResult, error)
+	ReadPerPatient(string) ([]ResourceResult, error)
 }
 
 type SQLDataSource struct {
 	db    *sqlx.DB
 	query string
 	log   zerolog.Logger
+}
+
+func (s *SQLDataSource) processRows(rows *sqlx.Rows) (ResourceResult, error) {
+	result := make(ResourceResult)
+
+	for rows.Next() {
+		row := make(map[string]interface{})
+		err := rows.MapScan(row)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning row: %w", err)
+		}
+
+		// Remove NULL values
+		for key, value := range row {
+			if value == nil {
+				delete(row, key)
+			}
+		}
+
+		id, _ := row["id"].(string)
+		parentID, _ := row["parent_id"].(string)
+		fhirPath, _ := row["fhir_path"].(string)
+		s.log.Debug().Str("id", id).Str("parentID", parentID).Str("fhirPath", fhirPath).Msg("Found row data")
+
+		delete(row, "id")
+		delete(row, "parent_id")
+		delete(row, "fhir_path")
+
+		mainRow := RowData{
+			ID:       id,
+			ParentID: parentID,
+			Data:     make(map[string]interface{}),
+		}
+
+		nestedFields := make(map[string]map[string]interface{})
+
+		for key, value := range row {
+			parts := strings.Split(key, ".")
+			if len(parts) > 1 {
+				nestedFHIRPath := fhirPath + "." + parts[0]
+				s.log.Debug().Str("nestedFHIRPath", nestedFHIRPath).Msg("Found nested field")
+				if nestedFields[nestedFHIRPath] == nil {
+					nestedFields[nestedFHIRPath] = make(map[string]interface{})
+				}
+				nestedFields[nestedFHIRPath][parts[1]] = value
+			} else {
+				s.log.Debug().Str("key", key).Msg("Found main field")
+				mainRow.Data[key] = value
+			}
+		}
+
+		result[fhirPath] = append(result[fhirPath], mainRow)
+
+		for nestedPath, nestedData := range nestedFields {
+			nestedRow := RowData{
+				ID:       id,
+				ParentID: id,
+				Data:     nestedData,
+			}
+			result[nestedPath] = append(result[nestedPath], nestedRow)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over rows: %w", err)
+	}
+
+	return result, nil
+}
+
+func (s *SQLDataSource) Read(patientID string) (ResourceResult, error) {
+	rows, err := s.db.Queryx(s.query)
+	if err != nil {
+		return nil, fmt.Errorf("error executing query: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(ResourceResult)
+
+	for {
+		partialResult, err := s.processRows(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		// Merge partialResult into result
+		for fhirPath, rowData := range partialResult {
+			result[fhirPath] = append(result[fhirPath], rowData...)
+		}
+
+		// Move to the next result set
+		if !rows.NextResultSet() {
+			break // No more result sets
+		}
+	}
+
+	return result, nil
+}
+
+func (s *SQLDataSource) ReadPerPatient(patientID string) ([]ResourceResult, error) {
+	query := strings.ReplaceAll(s.query, ":Patient.id", fmt.Sprintf("'%s'", patientID))
+
+	rows, err := s.db.Queryx(query)
+	if err != nil {
+		return nil, fmt.Errorf("error executing query: %w", err)
+	}
+	defer rows.Close()
+
+	resources := make(map[string]ResourceResult)
+
+	for {
+		for rows.Next() {
+			row := make(map[string]interface{})
+			err := rows.MapScan(row)
+			if err != nil {
+				return nil, fmt.Errorf("error scanning row: %w", err)
+			}
+
+			// Remove NULL values
+			for key, value := range row {
+				if value == nil {
+					delete(row, key)
+				}
+			}
+
+			id, _ := row["id"].(string)
+			parentID, _ := row["parent_id"].(string)
+			fhirPath, _ := row["fhir_path"].(string)
+			resourceID, _ := row["resource_id"].(string)
+			s.log.Debug().Str("id", id).Str("parentID", parentID).Str("fhirPath", fhirPath).Str("resourceID", resourceID).Msg("Found row data")
+
+			delete(row, "parent_id")
+			delete(row, "fhir_path")
+			delete(row, "resource_id")
+
+			mainRow := RowData{
+				ID:       id,
+				ParentID: parentID,
+				Data:     make(map[string]interface{}),
+			}
+
+			nestedFields := make(map[string]map[string]interface{})
+
+			for key, value := range row {
+				parts := strings.Split(key, ".")
+				if len(parts) > 1 {
+					nestedFHIRPath := fhirPath + "." + parts[0]
+					s.log.Debug().Str("nestedFHIRPath", nestedFHIRPath).Msg("Found nested field")
+					if nestedFields[nestedFHIRPath] == nil {
+						nestedFields[nestedFHIRPath] = make(map[string]interface{})
+					}
+					nestedFields[nestedFHIRPath][parts[1]] = value
+				} else {
+					s.log.Debug().Str("key", key).Msg("Found main field")
+					mainRow.Data[key] = value
+				}
+			}
+
+			if resources[resourceID] == nil {
+				resources[resourceID] = make(ResourceResult)
+			}
+			resources[resourceID][fhirPath] = append(resources[resourceID][fhirPath], mainRow)
+
+			for nestedPath, nestedData := range nestedFields {
+				nestedRow := RowData{
+					ID:       id,
+					ParentID: id,
+					Data:     nestedData,
+				}
+				resources[resourceID][nestedPath] = append(resources[resourceID][nestedPath], nestedRow)
+			}
+		}
+
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("error iterating over rows: %w", err)
+		}
+
+		if !rows.NextResultSet() {
+			break // No more result sets
+		}
+	}
+
+	// Convert map of ResourceResults to slice of ResourceResults
+	//TODO  Make sure to return map instead of converting to a slice
+	results := make([]ResourceResult, 0, len(resources))
+	for _, result := range resources {
+		results = append(results, result)
+	}
+
+	return results, nil
 }
 
 func NewSQLDataSource(db *sqlx.DB, query string, log zerolog.Logger) *SQLDataSource {
@@ -114,83 +314,6 @@ func LoadCSVMapperFromConfig(filePath string) (*CSVMapper, error) {
 	return mapper, nil
 }
 
-func (s *SQLDataSource) Read() (map[string][]map[string]interface{}, error) {
-	result := make(map[string][]map[string]interface{})
-
-	rows, err := s.db.Queryx(s.query)
-	if err != nil {
-		return nil, fmt.Errorf("error executing query: %w", err)
-	}
-	defer rows.Close()
-
-	resultSetCount := 0
-	for {
-		resultSetCount++
-		//log.Debug().Int("resultSet", resultSetCount).Msg("Processing result set")
-
-		rowCount := 0
-		for rows.Next() {
-			rowCount++
-			row := make(map[string]interface{})
-			err = rows.MapScan(row)
-			if err != nil {
-				return nil, fmt.Errorf("error scanning row: %w", err)
-			}
-
-			//log.Debug().Int("resultSet", resultSetCount).Int("row", rowCount).Interface("row", row).Msg("Row from SQL query")
-
-			// Remove NULL values
-			for key, value := range row {
-				if value == nil {
-					delete(row, key)
-				}
-			}
-
-			fieldName, ok := row["field_name"].(string)
-			if !ok {
-				return nil, fmt.Errorf("field_name not found or not a string in result set %d, row %d", resultSetCount, rowCount)
-			}
-
-			delete(row, "field_name")
-
-			// Use a unique identifier for each row
-			uniqueID, ok := row["id"].(string)
-			if !ok {
-				return nil, fmt.Errorf("id not found or not a string in result set %d, row %d", resultSetCount, rowCount)
-			}
-
-			// Check if this uniqueID already exists for this fieldName
-			found := false
-			for i, existingRow := range result[fieldName] {
-				if existingID, ok := existingRow["id"].(string); ok && existingID == uniqueID {
-					// Update existing row instead of appending a new one
-					result[fieldName][i] = row
-					found = true
-					break
-				}
-			}
-
-			// If not found, append as a new row
-			if !found {
-				result[fieldName] = append(result[fieldName], row)
-			}
-		}
-
-		if err := rows.Err(); err != nil {
-			return nil, fmt.Errorf("error iterating over rows in result set %d: %w", resultSetCount, err)
-		}
-
-		//s.log.Debug().Int("rowCount", rowCount).Msg("Finished processing result set")
-
-		// Move to the next result set
-		if !rows.NextResultSet() {
-			break // No more result sets
-		}
-	}
-
-	//s.log.Debug().Interface("result", result).Msg("Data from SQL query")
-	return result, nil
-}
 func NewCSVDataSource(filePath string, mapper *CSVMapper) *CSVDataSource {
 	return &CSVDataSource{
 		filePath: filePath,

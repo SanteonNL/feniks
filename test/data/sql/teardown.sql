@@ -5,3 +5,4 @@ DROP TABLE IF EXISTS patient_practitioner;
 DROP TABLE IF EXISTS couple;
 DROP TABLE IF EXISTS contact_points;
 DROP TABLE IF EXISTS contacts;
+DROP TABLE IF EXISTS observation_raw;
