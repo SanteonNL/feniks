@@ -521,17 +521,20 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 
 	}
 
-	// Check if the field is a pointer to a type that implements UnmarshalJSON
-	if structField.Kind() == reflect.Ptr {
-		if structField.IsNil() {
-			structField.Set(reflect.New(structField.Type().Elem()))
-		}
-		unmarshalJSONMethod := structField.MethodByName("UnmarshalJSON")
-		if unmarshalJSONMethod.IsValid() {
-			/*jsonInputValue, err := json.Marshal(inputValue)
-			if err != nil {
-				return fmt.Errorf("failed to marshal value to JSON: %v", err)
-			}*/
+	// Try UnmarshalJSON for the field and its address
+	for _, field := range []reflect.Value{structField, structField.Addr()} {
+		if field.CanInterface() && field.Type().Implements(reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()) {
+			/*// Check if the field is a pointer to a type that implements UnmarshalJSON
+			if structField.Kind() == reflect.Ptr {
+				if structField.IsNil() {
+					structField.Set(reflect.New(structField.Type().Elem()))
+				}
+				unmarshalJSONMethod := structField.MethodByName("UnmarshalJSON")
+				if unmarshalJSONMethod.IsValid() {
+					/*jsonInputValue, err := json.Marshal(inputValue)
+					if err != nil {
+						return fmt.Errorf("failed to marshal value to JSON: %v", err)
+					}*/
 			byteValue, err := getByteValue(inputValue)
 			if err != nil {
 				return fmt.Errorf("failed to convert input to []byte: %v", err)
