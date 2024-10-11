@@ -146,8 +146,61 @@ func main() {
 	}
 
 	// Initialize concept maps
+	// TODO: remove after starting to use the conceptmaps from the config folder
 	initializeGenderConceptMap()
 
+	// Load StructureDefinitions
+	err = LoadStructureDefinitions(log)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load StructureDefinitions")
+	}
+
+	// Check if FhirPathToValueset is filled correctly
+	for fhirPath, valueset := range FhirPathToValueset {
+		fmt.Printf("Path: %s, Valueset: %s\n", fhirPath, valueset)
+	}
+
+	// TODO: integrate with processing all json datasources
+	// Load ConceptMaps
+	err = LoadConceptMaps(log)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load ConceptMaps")
+	}
+
+	// Check if ValueSetToConceptMap is filled correctly
+	for valueset, conceptMap := range ValueSetToConceptMap {
+		fmt.Printf("Valueset: %s, Conceptmap ID: %s\n", valueset, *conceptMap.Id)
+	}
+
+	ExampleDetermineConceptMapforPath()
+
+	// TODO
+	// Check if FhirPathToValueset is filled correctly
+	/*for fhirPath, valueset := range FhirPathToValueset {
+		fmt.Printf("Path: %s, Valueset: %s\n", fhirPath, valueset)
+	}*/
+
+	// Example usage: Reading a ConceptMap
+	/*conceptMap, err := ReadFHIRResource("conceptmaps/2.16.840.1.113883.2.4.3.11.60.124.24.json", fhir.UnmarshalConceptMap)
+	if err != nil {
+		fmt.Printf("Error reading ConceptMap: %v\n", err)
+	} else {
+		fmt.Printf("Successfully read ConceptMap with ID: %s\n", *conceptMap.Id)
+	}
+
+	// Use the ConceptMap struct
+	fmt.Printf("ConceptMap ID: %s\n", *conceptMap.Id)
+	fmt.Printf("ConceptMap SoureUri a.k.a. source valuesetname: %s\n", *conceptMap.SourceUri)
+	fmt.Printf("ConceptMap TargetUri a.k.a. target valuesetname: %s\n", *conceptMap.TargetUri)
+
+	// Example: Iterate through groups and display elements
+	for _, group := range conceptMap.Group {
+		fmt.Printf("Source a.k.a. system_source: %s, Target a.k.a. system_target: %s\n", *group.Source, *group.Target)
+		for _, element := range group.Element {
+			fmt.Printf("Code: %s, Target: %v\n", *element.Code, *element.Target[0].Code)
+		}
+	}
+	*/
 	//Process data
 	patientID := "123"
 	_, err = ProcessDataSource(dataSource, "Observation", patientID, searchParameterMap, log)
@@ -381,7 +434,7 @@ func populateStructFields(structPath string, structPointer interface{}, row RowD
 	structType := structValue.Type()
 	log.Debug().Msgf("Struct type: %s", structType.Name())
 
-	if structType == "CodeableConcept" | 
+	//if structType == "CodeableConcept" |
 
 	for key, value := range row.Data {
 		for i := 0; i < structType.NumField(); i++ {
@@ -441,16 +494,63 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 		return nil
 	}
 
-	// Try UnmarshalJSON for the field and its address
-	for _, field := range []reflect.Value{structField, structField.Addr()} {
-		if field.CanInterface() && field.Type().Implements(reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()) {
-			byteValue, err := getByteValue(inputValue)
+	fhirPath := structPath + "." + strings.ToLower(structFieldName)
+	log.Debug().Msgf("fhirPath: %s", fhirPath)
+	if fhirPath == "Patient.gender" {
+		// Step 1: Convert inputValue to a string for concept mapping
+		inputValueType := reflect.TypeOf(inputValue)
+		log.Debug().Msgf("inputValueType: %s", inputValueType)
+		stringInputValue := getStringValue(reflect.ValueOf(inputValue))
+		log.Debug().Msgf("Converted inputValue to string: %s", stringInputValue)
+
+		// Step 2: Attempt to map the concept code before doing anything else
+		// Assuming "Patient.gender" is a placeholder, adjust as necessary for your use case
+		target, err := mapConceptCode(stringInputValue, "Patient.gender", log)
+		if err != nil {
+			return fmt.Errorf("failed to map concept code: %v", err)
+		}
+		log.Debug().Msgf("Mapped concept code: %v", target)
+
+		// Step 3: If the target has a mapped code, use that as the inputValue
+		if target.code != "" {
+			stringInputValue = target.code // Use the mapped code
+			log.Debug().Msgf("Using mapped code: %s", stringInputValue)
+		}
+
+		inputValue = stringInputValue
+
+	}
+
+	// Check if the field is a pointer to a type that implements UnmarshalJSON
+	if structField.Kind() == reflect.Ptr {
+		if structField.IsNil() {
+			structField.Set(reflect.New(structField.Type().Elem()))
+		}
+		unmarshalJSONMethod := structField.MethodByName("UnmarshalJSON")
+		if unmarshalJSONMethod.IsValid() {
+			//Map value first
+			stringInputValue := getStringValue(reflect.ValueOf(inputValue))
+			// TODO: check if this is the rigth place to map the code, what if there is no unmarshalJSON method?
+			//fhirPath := structPath + "." + strings.ToLower(structFieldName)
+			// log.Debug().Msgf("fhirPath: %s, Field: %s, Value: %v", fhirPath, strings.ToLower(structFieldName), stringInputValue)
+			target, err := mapConceptCode(stringInputValue, "Patient.gender", log)
 			if err != nil {
-				return fmt.Errorf("failed to convert input to []byte: %v", err)
+				return fmt.Errorf("failed to map concept code: %v", err)
+			}
+			if target.code != "" {
+				inputValue = target.code // TODO: Check what happens if a code is not mapped
+			}
+			// Convert the value to JSON
+			jsonInputValue, err := json.Marshal(inputValue)
+			if err != nil {
+				return fmt.Errorf("failed to marshal value to JSON: %v", err)
 			}
 
-			method := field.MethodByName("UnmarshalJSON")
-			results := method.Call([]reflect.Value{reflect.ValueOf(byteValue)})
+			// Call UnmarshalJSON
+			method := structField.MethodByName("UnmarshalJSON")
+			results := method.Call([]reflect.Value{reflect.ValueOf(jsonInputValue)})
+
+			//results := unmarshalJSONMethod.Call([]reflect.Value{reflect.ValueOf(jsonInputValue)})
 			if len(results) > 0 && !results[0].IsNil() {
 				return results[0].Interface().(error)
 			}
@@ -461,6 +561,7 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 	structFieldInputValue := reflect.ValueOf(inputValue)
 
 	// Handle conversion from []uint8 to []string if needed
+	// TODO scheck if it should be inputValue or structFieldInputValue
 	if structField.Type() == reflect.TypeOf([]string{}) && structFieldInputValue.Type() == reflect.TypeOf([]uint8{}) {
 		log.Debug().Msgf("Converting []uint8 to []string for field %s", structFieldName)
 		var strSlice []string
