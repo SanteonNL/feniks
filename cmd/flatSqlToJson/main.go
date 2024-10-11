@@ -528,19 +528,6 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 		}
 		unmarshalJSONMethod := structField.MethodByName("UnmarshalJSON")
 		if unmarshalJSONMethod.IsValid() {
-			//Map value first
-			stringInputValue := getStringValue(reflect.ValueOf(inputValue))
-			// TODO: check if this is the rigth place to map the code, what if there is no unmarshalJSON method?
-			//fhirPath := structPath + "." + strings.ToLower(structFieldName)
-			// log.Debug().Msgf("fhirPath: %s, Field: %s, Value: %v", fhirPath, strings.ToLower(structFieldName), stringInputValue)
-			target, err := mapConceptCode(stringInputValue, "Patient.gender", log)
-			if err != nil {
-				return fmt.Errorf("failed to map concept code: %v", err)
-			}
-			if target.code != "" {
-				inputValue = target.code // TODO: Check what happens if a code is not mapped
-			}
-			// Convert the value to JSON
 			jsonInputValue, err := json.Marshal(inputValue)
 			if err != nil {
 				return fmt.Errorf("failed to marshal value to JSON: %v", err)
