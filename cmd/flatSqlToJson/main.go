@@ -528,14 +528,17 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 		}
 		unmarshalJSONMethod := structField.MethodByName("UnmarshalJSON")
 		if unmarshalJSONMethod.IsValid() {
-			jsonInputValue, err := json.Marshal(inputValue)
+			/*jsonInputValue, err := json.Marshal(inputValue)
 			if err != nil {
 				return fmt.Errorf("failed to marshal value to JSON: %v", err)
+			}*/
+			byteValue, err := getByteValue(inputValue)
+			if err != nil {
+				return fmt.Errorf("failed to convert input to []byte: %v", err)
 			}
-
 			// Call UnmarshalJSON
 			method := structField.MethodByName("UnmarshalJSON")
-			results := method.Call([]reflect.Value{reflect.ValueOf(jsonInputValue)})
+			results := method.Call([]reflect.Value{reflect.ValueOf(byteValue)})
 
 			//results := unmarshalJSONMethod.Call([]reflect.Value{reflect.ValueOf(jsonInputValue)})
 			if len(results) > 0 && !results[0].IsNil() {
