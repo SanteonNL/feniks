@@ -526,26 +526,26 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 		if structField.IsNil() {
 			structField.Set(reflect.New(structField.Type().Elem()))
 		}
-		unmarshalJSONMethod := structField.MethodByName("UnmarshalJSON")
-		if unmarshalJSONMethod.IsValid() {
-			/*jsonInputValue, err := json.Marshal(inputValue)
-			if err != nil {
-				return fmt.Errorf("failed to marshal value to JSON: %v", err)
-			}*/
-			byteValue, err := getByteValue(inputValue)
-			if err != nil {
-				return fmt.Errorf("failed to convert input to []byte: %v", err)
-			}
-			// Call UnmarshalJSON
-			method := structField.MethodByName("UnmarshalJSON")
-			results := method.Call([]reflect.Value{reflect.ValueOf(byteValue)})
-
-			//results := unmarshalJSONMethod.Call([]reflect.Value{reflect.ValueOf(jsonInputValue)})
-			if len(results) > 0 && !results[0].IsNil() {
-				return results[0].Interface().(error)
-			}
-			return nil
+		//unmarshalJSONMethod := structField.MethodByName("UnmarshalJSON")
+		//if unmarshalJSONMethod.IsValid() {
+		/*jsonInputValue, err := json.Marshal(inputValue)
+		if err != nil {
+			return fmt.Errorf("failed to marshal value to JSON: %v", err)
+		}*/
+		byteValue, err := getByteValue(inputValue)
+		if err != nil {
+			return fmt.Errorf("failed to convert input to []byte: %v", err)
 		}
+		// Call UnmarshalJSON
+		method := structField.MethodByName("UnmarshalJSON")
+		results := method.Call([]reflect.Value{reflect.ValueOf(byteValue)})
+
+		//results := unmarshalJSONMethod.Call([]reflect.Value{reflect.ValueOf(jsonInputValue)})
+		if len(results) > 0 && !results[0].IsNil() {
+			return results[0].Interface().(error)
+		}
+		return nil
+		//}
 	}
 
 	structFieldInputValue := reflect.ValueOf(inputValue)
