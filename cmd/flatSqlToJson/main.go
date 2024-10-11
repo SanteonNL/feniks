@@ -524,9 +524,9 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 	// Try UnmarshalJSON for the field and its address
 	for _, field := range []reflect.Value{structField, structField.Addr()} {
 		if field.CanInterface() && field.Type().Implements(reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()) {
-			if structField.Kind() == reflect.Ptr {
-				if structField.IsNil() {
-					structField.Set(reflect.New(structField.Type().Elem()))
+			if field.Kind() == reflect.Ptr {
+				if field.IsNil() {
+					field.Set(reflect.New(field.Type().Elem()))
 				}
 			}
 			byteValue, err := getByteValue(inputValue)
