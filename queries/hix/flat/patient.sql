@@ -6,7 +6,7 @@ WITH names AS (
         p.geboortedatum as birthDate,
         null as system,
         null as value,
-        p.geslachtcode as gender
+        'male'as gender
     FROM
         patient p
     WHERE

@@ -229,7 +229,7 @@ func populateResourceStruct(resourceType string, field reflect.Value, resourceRe
 }
 
 func determinePopulateType(structPath string, value reflect.Value, parentID string, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	log.Debug().Str("StructPath", structPath).Msg("Determining type")
+	//log.Debug().Str("StructPath", structPath).Msg("Determining type")
 	rows, exists := resourceResult[structPath]
 	if !exists {
 		log.Debug().Msgf("No data found for: %s", structPath)
