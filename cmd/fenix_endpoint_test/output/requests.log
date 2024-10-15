@@ -1,0 +1,3 @@
+2024/10/15 13:12:29 Request: GET /Encounter?location.type=ICU&status=in-progress Output: C:\Users\t.hetterscheid\Repos\fenix\cmd\fenix_endpoint_test\output\encounter_20241015-131229.json
+2024/10/15 13:12:57 Request: GET /Observation?patient=P002 Output: C:\Users\t.hetterscheid\Repos\fenix\cmd\fenix_endpoint_test\output\observation_20241015-131257.json
+2024/10/15 13:16:31 Request: GET /Encounter?location.type=ICU&status=in-progress Output: C:\Users\t.hetterscheid\Repos\fenix\cmd\fenix_endpoint_test\output\encounter_20241015-131631.json
