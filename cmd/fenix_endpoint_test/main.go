@@ -25,8 +25,7 @@ var (
 
 func init() {
 	// Load .env file
-	envPath := util.GetAbsolutePath("cmd/fenix_endpoint_test/.env")
-	err := godotenv.Load(envPath)
+	err := godotenv.Load()
 	if err != nil {
 		log.Println("Error loading .env file")
 	}
