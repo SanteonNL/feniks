@@ -48,10 +48,17 @@ func init() {
 	}
 	logger = log.New(logFile, "", log.LstdFlags)
 
-	encounters = loadBundle(util.GetAbsolutePath("cmd/fenix_endpoint_test/fhir_resources/encounters.json"))
+	// Load FHIR resources
+	inputDir := os.Getenv("INPUT_DIR")
+	if inputDir == "" {
+		log.Fatal("INPUT_DIR not set in .env file")
+	}
+
+	encounters = loadBundle(util.GetAbsolutePath(inputDir + "/encounters.json"))
 	observations = map[string]fhir.Bundle{
-		"P002": loadBundle(util.GetAbsolutePath("cmd/fenix_endpoint_test/fhir_resources/observations-p002.json")),
-		"P003": loadBundle(util.GetAbsolutePath("cmd/fenix_endpoint_test/fhir_resources/observations-p003.json")),
+		"P001": loadBundle(util.GetAbsolutePath(inputDir + "/observations-p001.json")),
+		"P002": loadBundle(util.GetAbsolutePath(inputDir + "/observations-p002.json")),
+		"P003": loadBundle(util.GetAbsolutePath(inputDir + "/observations-p003.json")),
 	}
 }
 
