@@ -181,6 +181,8 @@ func ProcessDataSource(ds DataSource, resourceType string, patientID string, sea
 		resource := factory()
 		resourceValue := reflect.ValueOf(resource).Elem()
 
+		log.Debug().Interface("resourceResult", resourceResult).Msg("Resource result data")
+
 		// Populate the resource struct
 		filterResult, err := populateResourceStruct(resourceType, resourceValue, resourceResult, searchParameterMap, log)
 		if err != nil {
@@ -299,8 +301,9 @@ func populateSlice(structPath string, value reflect.Value, parentID string, rows
 }
 
 func populateStruct(structPath string, value reflect.Value, parentID string, rows []RowData, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) (*FilterResult, error) {
-	log.Debug().Str("Structpath", structPath).Msg("Populating struct")
+	log.Debug().Str("Structpath", structPath).Interface("rows", rows).Msg("Populating struct")
 	for _, row := range rows {
+		log.Debug().Str("Structpath", structPath).Msgf("Row: %+v and parentID %s", row, parentID)
 		if row.ParentID == parentID || parentID == "" {
 			if err := populateStructAndNestedFields(structPath, value, row, resourceResult, searchParameterMap, log); err != nil {
 				return nil, err
@@ -454,6 +457,12 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 		}
 	}
 
+	// Check if the field is of type json.Number
+	if structField.Type() == reflect.TypeOf(json.Number("")) ||
+		(structField.Kind() == reflect.Ptr && structField.Type().Elem() == reflect.TypeOf(json.Number(""))) {
+		return setJSONNumber(structField, inputValue, structFieldName, log)
+	}
+
 	structFieldInputValue := reflect.ValueOf(inputValue)
 
 	// Handle conversion from []uint8 to []string if needed
@@ -538,6 +547,52 @@ func hasDataForPath(resultMap map[string][]RowData, path string) bool {
 	}
 
 	return false
+}
+func setJSONNumber(field reflect.Value, value interface{}, fieldName string, log zerolog.Logger) error {
+	log.Debug().Msgf("Converting field %s to json.Number", fieldName)
+	var num json.Number
+	switch v := value.(type) {
+	case json.Number:
+		num = v
+	case *json.Number:
+		if v != nil {
+			num = *v
+		}
+	case string:
+		num = json.Number(v)
+	case float64:
+		num = json.Number(strconv.FormatFloat(v, 'f', -1, 64))
+	case int, int8, int16, int32, int64:
+		num = json.Number(fmt.Sprintf("%d", v))
+	case uint, uint8, uint16, uint32, uint64:
+		num = json.Number(fmt.Sprintf("%d", v))
+	case []uint8:
+		// Convert []uint8 to string, then to json.Number
+		str := string(v)
+		// Attempt to parse as float64 first
+		if _, err := strconv.ParseFloat(str, 64); err == nil {
+			num = json.Number(str)
+		} else {
+			// If it's not a valid float, try parsing as int64
+			if _, err := strconv.ParseInt(str, 10, 64); err == nil {
+				num = json.Number(str)
+			} else {
+				return fmt.Errorf("cannot convert []uint8 to a valid number: %s", str)
+			}
+		}
+	default:
+		return fmt.Errorf("cannot convert %T to json.Number", value)
+	}
+
+	if field.Kind() == reflect.Ptr {
+		if field.IsNil() {
+			field.Set(reflect.New(field.Type().Elem()))
+		}
+		field.Elem().Set(reflect.ValueOf(num))
+	} else {
+		field.Set(reflect.ValueOf(num))
+	}
+	return nil
 }
 
 func extendFhirPath(parentPath, childName string) string {

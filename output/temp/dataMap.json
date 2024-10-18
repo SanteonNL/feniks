@@ -1,16 +1,17 @@
 {
   "Observation": [
     {
-      "ID": "7",
+      "ID": "",
       "ParentID": "",
       "Data": {
+        "effectiveDateTime": "2021-10-30T19:19:19Z",
         "status": "final"
       }
     }
   ],
   "Observation.Patient": [
     {
-      "ID": "7",
+      "ID": "1",
       "ParentID": "",
       "Data": {
         "id": "456"
@@ -19,94 +20,68 @@
   ],
   "Observation.category": [
     {
-      "ID": "7_1",
+      "ID": "1",
       "ParentID": "",
       "Data": {
-        "id": "7",
-        "text": "text1"
+        "id": "1",
+        "text": "text"
       }
     },
     {
-      "ID": "7",
+      "ID": "1_1",
       "ParentID": "",
       "Data": {
-        "id": "7",
-        "text": "text"
+        "id": "1",
+        "text": "text1"
       }
     }
   ],
   "Observation.category.coding": [
     {
-      "ID": "7_1_2",
-      "ParentID": "7_1",
+      "ID": "1",
+      "ParentID": "1",
+      "Data": {
+        "code": "laboratory",
+        "display": "Laboratory",
+        "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+      }
+    },
+    {
+      "ID": "1_1",
+      "ParentID": "1_1",
+      "Data": {
+        "code": "laboratory1",
+        "display": "Laboratory1",
+        "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+      }
+    },
+    {
+      "ID": "1_1_2",
+      "ParentID": "1_1",
       "Data": {
         "code": "nogiets",
-        "display": "Laboratory",
+        "display": "nogiets",
         "system": "http://terminology.hl7.org/CodeSystem/observation-category"
-      }
-    },
-    {
-      "ID": "7",
-      "ParentID": "7",
-      "Data": {
-        "code": "laboratory",
-        "display": "Laboratory",
-        "system": "http://terminology.hl7.org/CodeSystem/observation-category"
-      }
-    },
-    {
-      "ID": "7_1",
-      "ParentID": "7_1",
-      "Data": {
-        "code": "laboratory",
-        "display": "Laboratory",
-        "system": "http://terminology.hl7.org/CodeSystem/observation-category"
-      }
-    }
-  ],
-  "Observation.effective": [
-    {
-      "ID": "7",
-      "ParentID": "",
-      "Data": {
-        "dateTime": "2022-10-30T19:19:19Z"
       }
     }
   ],
   "Observation.subject": [
     {
-      "ID": "7",
+      "ID": "1",
       "ParentID": "",
       "Data": {
         "reference": "Patient/456"
       }
     }
   ],
-  "Observation.value": [
+  "Observation.valuequantity": [
     {
-      "ID": "7",
+      "ID": "1",
       "ParentID": "",
       "Data": {
-        "type": "valueCodeableConcept"
-      }
-    }
-  ],
-  "Observation.value.valueCodeableConcept": [
-    {
-      "ID": "7",
-      "ParentID": "7",
-      "Data": {
-        "id": "7"
-      }
-    }
-  ],
-  "Observation.value.valueCodeableConcept.coding": [
-    {
-      "ID": "7",
-      "ParentID": "7",
-      "Data": {
-        "code": "22636003",
-        "system": "unknown"
+        "system": "http://unitsofmeasure.org",
+        "unit": "mg/dL",
+        "value": "NC42"
       }
     }
   ]

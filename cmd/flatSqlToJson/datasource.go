@@ -58,7 +58,7 @@ func (s *SQLDataSource) processRows(rows *sqlx.Rows) (ResourceResult, error) {
 		// delete(row, "fhir_path")
 
 		mainRow := RowData{
-			ID:       id,
+			ID:       "",
 			ParentID: parentID,
 			Data:     make(map[string]interface{}),
 		}
@@ -216,7 +216,7 @@ func (s *SQLDataSource) processRow(row map[string]interface{}, resources map[str
 		} else {
 			// Add new entry
 			resources[resourceID][fhirPath] = append(resources[resourceID][fhirPath], RowData{
-				ID:       id,
+				ID:       "",
 				ParentID: parentID,
 				Data:     topLevelData,
 			})
