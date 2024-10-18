@@ -6,7 +6,8 @@ WITH names AS (
         p.geboortedatum as birthDate,
         null as system,
         null as value,
-        p.geslachtcode as gender
+        p.geslachtcode as gender,
+        null as use
     FROM
         patient p
     WHERE
@@ -25,7 +26,8 @@ SELECT
     null as birthDate,
     'https://santeon.nl' as system,
     id as value,
-    null as gender
+    null as gender,
+    null as use
 FROM
     names
 UNION ALL
@@ -36,10 +38,11 @@ SELECT
     null as birthDate,
     null as system,
     null as value,
-    null as gender
+    null as gender,
+    null as use
 FROM
     names
-UNION ALL
+    UNION ALL
 SELECT
     'Patient.identifier' as fhir_path,
     '12345' as id,
@@ -47,7 +50,8 @@ SELECT
     null as birthDate,
     'https://santeon.nl' as system,
     '123456' as value,
-    null as gender
+    null as gender,
+    'official' as use
 FROM
     names
 UNION ALL
@@ -58,7 +62,8 @@ SELECT
     null as birthDate,
     null as system,
     null as value,
-    null as gender
+    null as gender,
+    null as use
 FROM
     names;
 
@@ -105,7 +110,6 @@ SELECT
     '12345' as id,
     'http://terminology.hl7.org/CodeSystem/v2-0203' as system,
     'AN' as code;
-
 WITH names AS (
     SELECT
         'Patient.name' as fhir_path,
