@@ -22,4 +22,4 @@
 go.work
 
 # Test toutput
-output/temp/
+/output/temp/
