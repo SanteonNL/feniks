@@ -82,6 +82,7 @@ func main() {
 		},
 	}
 
+	// TODO: integrate with processing all json datasources
 	// Load StructureDefinitions
 	err = LoadStructureDefinitions(log)
 	if err != nil {
@@ -105,33 +106,6 @@ func main() {
 		log.Debug().Msgf("Valueset: %s, Conceptmap ID: %s\n", valueset, *conceptMap.Id)
 	}
 
-	// TODO
-	// Check if FhirPathToValueset is filled correctly
-	/*for fhirPath, valueset := range FhirPathToValueset {
-		fmt.Printf("Path: %s, Valueset: %s\n", fhirPath, valueset)
-	}*/
-
-	// Example usage: Reading a ConceptMap
-	/*conceptMap, err := ReadFHIRResource("conceptmaps/2.16.840.1.113883.2.4.3.11.60.124.24.json", fhir.UnmarshalConceptMap)
-	if err != nil {
-		fmt.Printf("Error reading ConceptMap: %v\n", err)
-	} else {
-		fmt.Printf("Successfully read ConceptMap with ID: %s\n", *conceptMap.Id)
-	}
-
-	// Use the ConceptMap struct
-	fmt.Printf("ConceptMap ID: %s\n", *conceptMap.Id)
-	fmt.Printf("ConceptMap SoureUri a.k.a. source valuesetname: %s\n", *conceptMap.SourceUri)
-	fmt.Printf("ConceptMap TargetUri a.k.a. target valuesetname: %s\n", *conceptMap.TargetUri)
-
-	// Example: Iterate through groups and display elements
-	for _, group := range conceptMap.Group {
-		fmt.Printf("Source a.k.a. system_source: %s, Target a.k.a. system_target: %s\n", *group.Source, *group.Target)
-		for _, element := range group.Element {
-			fmt.Printf("Code: %s, Target: %v\n", *element.Code, *element.Target[0].Code)
-		}
-	}
-	*/
 	//Process data
 	patientID := "123"
 	_, err = ProcessDataSource(dataSource, "Observation", patientID, searchParameterMap, log)
