@@ -232,6 +232,7 @@ func populateSlice(structPath string, value reflect.Value, parentID string, rows
 				return nil, err
 			}
 
+			log.Debug().Str("structPath", structPath).Msg("Applying filter 1")
 			filterResult, err := ApplyFilter(structPath, valueElement, searchParameterMap, log)
 			if err != nil {
 				return nil, err
@@ -266,8 +267,8 @@ func populateStruct(structPath string, value reflect.Value, parentID string, row
 				return nil, err
 			}
 
+			log.Debug().Str("structPath", structPath).Msg("Applying filter 2")
 			filterResult, err := ApplyFilter(structPath, value, searchParameterMap, log)
-			log.Debug().Msg("Hello Applying filter")
 			if err != nil {
 				return nil, err
 			}
@@ -325,6 +326,7 @@ func populateBasicType(name string, field reflect.Value, parentID string, rows [
 					if err := SetField(fieldName, field.Addr().Interface(), name, value, log); err != nil {
 						return nil, err
 					}
+					log.Debug().Str("fieldname", fieldName).Msg("Applying filter 3")
 					return ApplyFilter(fieldName, field, searchParameterMap, log)
 				}
 			}
@@ -352,8 +354,8 @@ func populateStructFields(structPath string, structPointer interface{}, row RowD
 				fhirPath := structPath + "." + strings.ToLower(fieldName)
 				// TODO: I think this might for a code/system not be the right place for the filter?
 				// Mogelijk aalleen op bovenste niveau gaat het mis?
+				log.Debug().Str("structPath", structPath).Msg("Applying filter 4")
 				if _, err := ApplyFilter(fhirPath, reflect.ValueOf(value), searchParameterMap, log); err != nil {
-					log.Debug().Msgf("Not hello to apply filter: %v", err)
 					return err
 				}
 			}
