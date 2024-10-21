@@ -26,27 +26,3 @@ FROM
     observation_raw
 --WHERE identificatienummer = :Patient.id
 limit 1 ;
-
-
--- SELECT
---     identificatienummer as "Patient.id",
---     metingid as "resource_id",
---     metingid AS id,
---     '' AS parent_id,
---     'Observation.category' AS fhir_path
--- FROM 
---     observation_raw
--- WHERE identificatienummer = :Patient.id;
-
--- SELECT
---     identificatienummer as "Patient.id",
---     metingid as "resource_id",
---     metingid AS id,
---     '' AS parent_id,
---     'Observation.category.coding' AS fhir_path,
---     'http://terminology.hl7.org/CodeSystem/observation-category' AS "system",
---     'laboratory' AS "code",
---     'Laboratory' AS "display"
--- FROM 
---     observation_raw
--- WHERE identificatienummer = :Patient.id;

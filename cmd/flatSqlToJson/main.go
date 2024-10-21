@@ -98,7 +98,7 @@ func main() {
 	defer db.Close()
 
 	// Set up data source
-	queryPath := util.GetAbsolutePath("queries/hix/flat/Observation_hix_metingen_metingen.sql")
+	queryPath := util.GetAbsolutePath("queries/hix/flat/patient_index.sql")
 	queryBytes, err := os.ReadFile(queryPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to read query file")
@@ -149,7 +149,7 @@ func main() {
 
 	//Process data
 	patientID := "456"
-	_, err = ProcessDataSource(dataSource, "Observation", patientID, searchParameterMap, log)
+	_, err = ProcessDataSource(dataSource, "Patient", patientID, searchParameterMap, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to process data source")
 	}
@@ -443,6 +443,10 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 	// Try UnmarshalJSON for the field and its address
 	for _, field := range []reflect.Value{structField, structField.Addr()} {
 		if field.CanInterface() && field.Type().Implements(reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()) {
+			if field.Kind() == reflect.Ptr && field.IsNil() {
+				field.Set(reflect.New(field.Type().Elem()))
+			}
+
 			byteValue, err := getByteValue(inputValue)
 			if err != nil {
 				return fmt.Errorf("failed to convert input to []byte: %v", err)
