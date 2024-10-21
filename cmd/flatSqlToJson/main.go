@@ -82,10 +82,6 @@ func main() {
 		},
 	}
 
-	// Initialize concept maps
-	// TODO: remove after starting to use the conceptmaps from the config folder
-	//initializeGenderConceptMap()
-
 	// Load StructureDefinitions
 	err = LoadStructureDefinitions(log)
 	if err != nil {
