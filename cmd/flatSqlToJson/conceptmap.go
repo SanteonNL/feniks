@@ -72,7 +72,6 @@ func TranslateCode(conceptMap fhir.ConceptMap, sourceCode *string, log zerolog.L
 	return nil, nil, fmt.Errorf("code not found in ConceptMap")
 }
 
-// LoadStructureDefinitions loads all StructureDefinitions into a global map.
 func LoadConceptMaps(log zerolog.Logger) error {
 	files, err := os.ReadDir("config/conceptmaps")
 	if err != nil {
