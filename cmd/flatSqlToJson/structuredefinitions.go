@@ -28,9 +28,29 @@ func LoadStructureDefinitions(log zerolog.Logger) error {
 			}
 			StructureDefinitionsMap[structureDefinition.Name] = *structureDefinition
 			log.Debug().Str("structureDefinition", file.Name()).Msg("Loaded StructureDefinition")
-			PrintElementsWithCodeType(structureDefinition)
+			CollectValuesetBindingsForCodeTypes(structureDefinition, log)
 		}
 	}
 
 	return nil
+}
+
+// CollectElementsWithCodeTypes collects elements from the StructureDefinition with code types and their value set bindings.
+func CollectValuesetBindingsForCodeTypes(structureDefinition *fhir.StructureDefinition, log zerolog.Logger) {
+	// Iterate through the elements in the Snapshot (you can also use Differential if needed)
+	for _, element := range structureDefinition.Snapshot.Element {
+		for _, t := range element.Type {
+			// Choice based on https://www.hl7.org/fhir/search.html#token, CodeableReference is excluded because it is R5
+			if t.Code == "code" || t.Code == "Coding" || t.Code == "CodeableConcept" || t.Code == "Quantity" {
+				//log.Debug().Msgf("Path: %s, Type: %s, Definition: %s", element.Path, t.Code, *element.Definition)
+				if element.Binding != nil {
+					//log.Debug().Msgf("  Binding Strength: %s, Value Set URL: %s ", element.Binding.Strength, *element.Binding.ValueSet)
+					FhirPathToValueset[element.Path] = *element.Binding.ValueSet
+				} else {
+					fmt.Println("  No binding information available.")
+				}
+				break
+			}
+		}
+	}
 }

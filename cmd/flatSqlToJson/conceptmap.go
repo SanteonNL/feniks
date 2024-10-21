@@ -72,30 +72,6 @@ func TranslateCode(conceptMap fhir.ConceptMap, sourceCode *string, log zerolog.L
 	return nil, nil, fmt.Errorf("code not found in ConceptMap")
 }
 
-// PrintElementsWithCodeType prints elements from the StructureDefinition
-// where the type is either 'code' or 'CodeableConcept', including any value set bindings.
-func PrintElementsWithCodeType(structureDefinition *fhir.StructureDefinition) {
-	// Iterate through the elements in the Snapshot (you can also use Differential if needed)
-	for _, element := range structureDefinition.Snapshot.Element {
-		for _, t := range element.Type { // Choice based on https://www.hl7.org/fhir/search.html#token, CodeableReference is excluded because it is R5
-			if t.Code == "code" || t.Code == "Coding" || t.Code == "CodeableConcept" || t.Code == "Quantity" {
-				// Print basic details
-				fmt.Printf("Path: %s, Type: %s, Definition: %s\n", element.Path, t.Code, *element.Definition)
-
-				// Print value set binding information if available
-				if element.Binding != nil {
-					fmt.Printf("  Binding Strength: %s\n", element.Binding.Strength)
-					fmt.Printf("  Value Set URL: %s\n", *element.Binding.ValueSet)
-					FhirPathToValueset[element.Path] = *element.Binding.ValueSet
-				} else {
-					fmt.Println("  No binding information available.")
-				}
-				break
-			}
-		}
-	}
-}
-
 // LoadStructureDefinitions loads all StructureDefinitions into a global map.
 func LoadConceptMaps(log zerolog.Logger) error {
 	files, err := os.ReadDir("config/conceptmaps")
