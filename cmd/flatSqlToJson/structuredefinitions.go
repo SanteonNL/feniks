@@ -35,6 +35,7 @@ func LoadStructureDefinitions(log zerolog.Logger) error {
 	return nil
 }
 
+// TODO: See how a Quantity example might work, as it is not yet implemented
 // CollectElementsWithCodeTypes collects elements from the StructureDefinition with code types and their value set bindings.
 func CollectValuesetBindingsForCodeTypes(structureDefinition *fhir.StructureDefinition, log zerolog.Logger) {
 	// Iterate through the elements in the Snapshot (you can also use Differential if needed)
@@ -47,7 +48,7 @@ func CollectValuesetBindingsForCodeTypes(structureDefinition *fhir.StructureDefi
 					//log.Debug().Msgf("  Binding Strength: %s, Value Set URL: %s ", element.Binding.Strength, *element.Binding.ValueSet)
 					FhirPathToValueset[element.Path] = *element.Binding.ValueSet
 				} else {
-					fmt.Println("  No binding information available.")
+					log.Debug().Msgf("No binding for path: %s, code: %s", element.Path, t.Code)
 				}
 				break
 			}
