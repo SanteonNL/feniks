@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 
 	"github.com/SanteonNL/fenix/models/fhir" // for use of the conceptMap.go file
 	"github.com/rs/zerolog"
@@ -139,4 +141,60 @@ func printConceptMapDetails(conceptMap *fhir.ConceptMap) {
 				}
 			}
 		}*/
+}
+
+func applyConceptMapping(structPath string, structType reflect.Type, structPointer interface{}, log zerolog.Logger) error {
+	// Get the FHIR path for ValueSet binding
+	fhirPath := getValueSetBindingPath(structPath, structType.Name())
+	log.Debug().Msgf("FHIR Path to determine ValueSet: %s", fhirPath)
+
+	_, exists := FhirPathToValueset[fhirPath]
+	if exists {
+		log.Debug().Msgf("FHIR Path %s is in FhirPathToValueset", fhirPath)
+
+		// Collect the ConceptMap for the FHIR path
+		conceptMap, err := getConceptMapForFhirPath(fhirPath, log)
+		if err != nil {
+			log.Debug().Msgf("Failed to get ConceptMap for FHIR Path: %v", err)
+			return err
+		}
+
+		log.Debug().Msgf("ConceptMap for FHIR Path %s: %v", fhirPath, *conceptMap.Id)
+
+		// Check for system, code, or display fields in the struct
+		structValue := reflect.ValueOf(structPointer).Elem()
+		for i := 0; i < structType.NumField(); i++ {
+			fieldName := structType.Field(i).Name
+			fieldNameLower := strings.ToLower(fieldName)
+
+			if fieldNameLower == "system" || fieldNameLower == "code" || fieldNameLower == "display" {
+				log.Debug().Msgf("This field might need concept mapping: %s", fieldNameLower)
+			}
+		}
+
+		// Set the code field if it exists in the struct
+		codeField := structValue.FieldByName("Code")
+		codeFieldValue := getStringValue(codeField.Elem())
+		log.Debug().Msgf("Current code field value: %s", codeFieldValue)
+
+		// Perform concept mapping
+		targetCode, targetDisplay, err := TranslateCode(conceptMap, &codeFieldValue, log)
+		if err != nil {
+			return fmt.Errorf("Failed to map concept code: %v", err)
+		}
+		log.Debug().Msgf("Mapped concept code: %v", *targetCode)
+
+		// Set the mapped code back to the struct's Code field
+		if codeField.IsValid() && codeField.CanSet() {
+			if err := SetField(structPath, structPointer, "Code", *targetCode, log); err != nil {
+				return err
+			}
+		}
+
+		log.Debug().Msgf("Target display could be used for display: %s", *targetDisplay)
+	} else {
+		log.Debug().Msgf("FHIR Path %s is not in FhirPathToValueset", fhirPath)
+	}
+
+	return nil
 }

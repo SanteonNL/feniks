@@ -282,7 +282,6 @@ func populateStruct(structPath string, value reflect.Value, parentID string, row
 	return &FilterResult{Passed: true}, nil
 }
 
-// TODO nestedelements -> nested felds
 func populateStructAndNestedFields(structPath string, valueElement reflect.Value, row RowData, resourceResult ResourceResult, searchParameterMap SearchParameterMap, log zerolog.Logger) error {
 	log.Debug().Str("structPath", structPath).Msg("Populating struct and nested fields")
 	if err := populateStructFields(structPath, valueElement.Addr().Interface(), row, searchParameterMap, log); err != nil {
@@ -362,62 +361,10 @@ func populateStructFields(structPath string, structPointer interface{}, row RowD
 		}
 	}
 
-	// Do conceptmapping for Coding and Quantity
-
-	// CodeableConcept does not need to be checked, as it is a struct with a Coding field
+	// Apply concept mapping for Coding and Quantity
 	if structType.Name() == "Coding" || structType.Name() == "Quantity" {
-		fhirPath := getValueSetBindingPath(structPath, structType.Name())
-		log.Debug().Msgf("fhirPath to determine Valuest: %s", fhirPath)
-		_, exists := FhirPathToValueset[fhirPath] // this is the same as in setField
-		if exists {
-			log.Debug().Msgf("fhirPath %s is in FhirPathToValueset", fhirPath)
-
-			// Collect the conceptmaps for the fhirPath
-			conceptMap, err := getConceptMapForFhirPath(fhirPath, log)
-			if err != nil {
-				log.Debug().Msgf("failed to get conceptmap for fhirPath: %v", err)
-			} else {
-				log.Debug().Msgf("ConceptMap for fhirPath %s: %v", fhirPath, *conceptMap.Id)
-
-				for i := 0; i < structType.NumField(); i++ {
-					fieldName := structType.Field(i).Name
-					fieldNameLower := strings.ToLower(fieldName)
-
-					if fieldNameLower == "system" || fieldNameLower == "code" || fieldNameLower == "display" {
-						log.Debug().Msgf("This field might need conceptmapping: %s", fieldNameLower)
-					}
-				}
-
-				// Set the code field if it exists in the struct
-				codeField := structValue.FieldByName("Code")
-				codeFieldValue := getStringValue(codeField.Elem())
-				log.Debug().Msgf("Curent code fieldvalue: %s", codeFieldValue)
-
-				targetCode, targetDisplay, err := TranslateCode(conceptMap, &codeFieldValue, log)
-				if err != nil {
-					return fmt.Errorf("failed to map concept code: %v", err)
-				}
-				log.Debug().Msgf("Mapped concept code: %v", *targetCode)
-
-				if codeField.IsValid() && codeField.CanSet() {
-					if err := SetField(structPath, structPointer, "Code", *targetCode, log); err != nil {
-						return err
-					}
-				}
-				log.Debug().Msgf("targetDisplay could be used for display: %s", *targetDisplay)
-
-				// Step 3: If the target has a mapped code, use that as the inputValue
-				/*if *targetCode != "" {
-					stringInputValue = *targetCode // Use the mapped code
-					log.Debug().Msgf("Using mapped code: %s", stringInputValue)
-					log.Debug().Msgf("Using mapped display: %s", *targetDisplay) // not yet changed
-				}
-
-				inputValue = stringInputValue
-				log.Debug().Msgf("inputValue after concept mapping: %v", inputValue)*/
-			}
-		} else {
-			log.Debug().Msgf("fhirPath %s is not in FhirPathToValueset", fhirPath)
+		if err := applyConceptMapping(structPath, structType, structPointer, log); err != nil {
+			return err
 		}
 	}
 
