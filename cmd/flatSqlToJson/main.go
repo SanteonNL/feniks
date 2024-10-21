@@ -18,6 +18,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// TODO @Tommy check if the function in fhirresource.go can be used for this
 var FHIRResourceMap = map[string]func() interface{}{
 	"Patient":     func() interface{} { return &fhir.Patient{} },
 	"Observation": func() interface{} { return &fhir.Observation{} },
@@ -91,7 +92,7 @@ func main() {
 
 	// Check if FhirPathToValueset is filled correctly
 	for fhirPath, valueset := range FhirPathToValueset {
-		fmt.Printf("Path: %s, Valueset: %s\n", fhirPath, valueset)
+		log.Debug().Msgf("Path: %s, Valueset: %s\n", fhirPath, valueset)
 	}
 
 	// TODO: integrate with processing all json datasources
