@@ -56,14 +56,10 @@ func getConceptMapForFhirPath(fhirPath string, log zerolog.Logger) (fhir.Concept
 func TranslateCode(conceptMap fhir.ConceptMap, sourceCode *string, log zerolog.Logger) (*string, *string, error) {
 	log.Debug().Msgf("sourceCode: %v", *sourceCode)
 	for _, group := range conceptMap.Group {
-		log.Debug().Msgf("Group: %v", group)
 		log.Debug().Msgf("Group.Source: %v", *group.Source)
 		log.Debug().Msgf("Source: %v", *conceptMap.SourceUri)
 		//if group.Source == conceptMap.SourceUri {
 		for _, element := range group.Element {
-			log.Debug().Msgf("Element: %v", element)
-			log.Debug().Msgf("Element.Code: %v", *element.Code)
-			log.Debug().Msgf("Element.Code.targetCode: %v", *element.Target[0].Code)
 			if *element.Code == *sourceCode {
 				for _, target := range element.Target {
 					log.Debug().Msgf("Returning targetCode: %s, targetDisplay: %s", *target.Code, *target.Display)
@@ -115,32 +111,50 @@ func LoadConceptMaps(log zerolog.Logger) error {
 				return fmt.Errorf("failed to read Conceptmap from file: %v", err)
 			}
 			log.Debug().Str("conceptMap", file.Name()).Msg("Loaded conceptMap")
-			printConceptMapDetails(conceptMap)
+			ValueSetToConceptMap[*conceptMap.TargetUri] = conceptMap
 		}
 	}
 
 	return nil
 }
 
-func printConceptMapDetails(conceptMap *fhir.ConceptMap) {
-	// Print ConceptMap details
-	/*fmt.Printf("ConceptMap ID: %s\n", *conceptMap.Id)
-	fmt.Printf("ConceptMap SourceUri (source valuesetname): %s\n", *conceptMap.SourceUri)
-	fmt.Printf("ConceptMap TargetUri (target valuesetname): %s\n", *conceptMap.TargetUri)
-	*/
-	ValueSetToConceptMap[*conceptMap.TargetUri] = conceptMap
+// TODO for the 3 funcitons below:
+// - Check when and when not to reutrn errors
+// - Check in what cases they will go wrong (eg struct withoud code?)
+// - See if other chekcs are needed
+// - For a code make sure always everything is mapped to the bound valueset, for coding also unmapped codes can
+// be correct
+// - What to do with system and display fields? (not yet implemented)
 
-	/*
-		// Iterate through groups and display elements
-		for _, group := range conceptMap.Group {
-			fmt.Printf("Source (system_source): %s, Target (system_target): %s\n", *group.Source, *group.Target)
-			for _, element := range group.Element {
-				// Ensure there is at least one target to avoid panic
-				if len(element.Target) > 0 {
-					fmt.Printf("Code: %s, Target: %v\n", *element.Code, *element.Target[0].Code)
-				}
-			}
-		}*/
+func performConceptMapping(fhirPath string, inputValue string, log zerolog.Logger) (string, string, error) {
+	// Check if fhirPath is in FhirPathToValueset
+	_, exists := FhirPathToValueset[fhirPath]
+	if !exists {
+		log.Debug().Msgf("FHIR Path %s is not in FhirPathToValueset", fhirPath)
+		return inputValue, "", nil
+	}
+
+	log.Debug().Msgf("FHIR Path %s is in FhirPathToValueset", fhirPath)
+
+	// Collect the ConceptMap for the FHIR path
+	conceptMap, err := getConceptMapForFhirPath(fhirPath, log)
+	if err != nil {
+		log.Debug().Msgf("Failed to get ConceptMap for FHIR Path: %v", err)
+		// No error return needed in this case
+		return inputValue, "", nil
+	}
+
+	log.Debug().Msgf("ConceptMap for FHIR Path %s: %v", fhirPath, *conceptMap.Id)
+
+	// Perform concept mapping using the ConceptMap
+	targetCode, targetDisplay, err := TranslateCode(conceptMap, &inputValue, log)
+	if err != nil {
+		return "", "", fmt.Errorf("Failed to map concept code: %v", err)
+	}
+	log.Debug().Msgf("Mapped concept code: %v, display: %v", *targetCode, *targetDisplay)
+
+	// Return the mapped code and display
+	return *targetCode, *targetDisplay, nil
 }
 
 func applyConceptMappingForStruct(structPath string, structType reflect.Type, structPointer interface{}, log zerolog.Logger) error {
@@ -148,52 +162,32 @@ func applyConceptMappingForStruct(structPath string, structType reflect.Type, st
 	fhirPath := getValueSetBindingPath(structPath, structType.Name())
 	log.Debug().Msgf("FHIR Path to determine ValueSet: %s", fhirPath)
 
-	_, exists := FhirPathToValueset[fhirPath]
-	if exists {
-		log.Debug().Msgf("FHIR Path %s is in FhirPathToValueset", fhirPath)
+	// Check for system, code, or display fields in the struct
+	structValue := reflect.ValueOf(structPointer).Elem()
+	for i := 0; i < structType.NumField(); i++ {
+		fieldName := structType.Field(i).Name
+		fieldNameLower := strings.ToLower(fieldName)
 
-		// Collect the ConceptMap for the FHIR path
-		conceptMap, err := getConceptMapForFhirPath(fhirPath, log)
-		if err != nil {
-			log.Debug().Msgf("Failed to get ConceptMap for FHIR Path: %v", err)
+		if fieldNameLower == "system" || fieldNameLower == "code" || fieldNameLower == "display" {
+			log.Debug().Msgf("This field might need concept mapping: %s", fieldNameLower)
+		}
+	}
+
+	// Get the code field value
+	fieldValue := structValue.FieldByName("Code")
+	fieldValueStr := getStringValue(fieldValue.Elem())
+
+	// Perform concept mapping using the shared function
+	mappedCode, _, err := performConceptMapping(fhirPath, fieldValueStr, log)
+	if err != nil {
+		return err
+	}
+
+	// Set the mapped code back to the struct's Code field
+	if fieldValue.IsValid() && fieldValue.CanSet() {
+		if err := SetField(structPath, structPointer, "Code", mappedCode, log); err != nil {
 			return err
 		}
-
-		log.Debug().Msgf("ConceptMap for FHIR Path %s: %v", fhirPath, *conceptMap.Id)
-
-		// Check for system, code, or display fields in the struct
-		structValue := reflect.ValueOf(structPointer).Elem()
-		for i := 0; i < structType.NumField(); i++ {
-			fieldName := structType.Field(i).Name
-			fieldNameLower := strings.ToLower(fieldName)
-
-			if fieldNameLower == "system" || fieldNameLower == "code" || fieldNameLower == "display" {
-				log.Debug().Msgf("This field might need concept mapping: %s", fieldNameLower)
-			}
-		}
-
-		// Set the code field if it exists in the struct
-		codeField := structValue.FieldByName("Code")
-		codeFieldValue := getStringValue(codeField.Elem())
-		log.Debug().Msgf("Current code field value: %s", codeFieldValue)
-
-		// Perform concept mapping
-		targetCode, targetDisplay, err := TranslateCode(conceptMap, &codeFieldValue, log)
-		if err != nil {
-			return fmt.Errorf("Failed to map concept code: %v", err)
-		}
-		log.Debug().Msgf("Mapped concept code: %v", *targetCode)
-
-		// Set the mapped code back to the struct's Code field
-		if codeField.IsValid() && codeField.CanSet() {
-			if err := SetField(structPath, structPointer, "Code", *targetCode, log); err != nil {
-				return err
-			}
-		}
-
-		log.Debug().Msgf("Target display could be used for display: %s", *targetDisplay)
-	} else {
-		log.Debug().Msgf("FHIR Path %s is not in FhirPathToValueset", fhirPath)
 	}
 
 	return nil
@@ -205,42 +199,16 @@ func applyConceptMappingForField(structPath string, structFieldName string, inpu
 	fhirPath = extractAndCapitalizeLastTwoParts(fhirPath)
 	log.Debug().Msgf("FHIR Path: %s", fhirPath)
 
-	// Check if fhirPath is in FhirPathToValueset
-	_, exists := FhirPathToValueset[fhirPath]
-	if !exists {
-		log.Debug().Msgf("FHIR Path %s is not in FhirPathToValueset", fhirPath)
-		return inputValue, nil
-	}
-
-	log.Debug().Msgf("FHIR Path %s is in FhirPathToValueset", fhirPath)
-
-	// Collect the ConceptMap for the FHIR path
-	conceptMap, err := getConceptMapForFhirPath(fhirPath, log)
-	if err != nil {
-		log.Debug().Msgf("Failed to get ConceptMap for FHIR Path: %v", err)
-		// err does not need to be returned....
-		return inputValue, nil
-	}
-
-	log.Debug().Msgf("ConceptMap for FHIR Path %s: %v", fhirPath, *conceptMap.Id)
-
-	// Step 1: Convert inputValue to a string for concept mapping
+	// Convert inputValue to a string for concept mapping
 	stringInputValue := getStringValue(reflect.ValueOf(inputValue))
 	log.Debug().Msgf("Converted inputValue to string: %s", stringInputValue)
 
-	// Perform concept mapping using the ConceptMap
-	targetCode, targetDisplay, err := TranslateCode(conceptMap, &stringInputValue, log)
+	// Perform concept mapping using the shared function
+	mappedCode, _, err := performConceptMapping(fhirPath, stringInputValue, log)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to map concept code: %v", err)
-	}
-	log.Debug().Msgf("Mapped concept code: %v", *targetCode)
-
-	// Step 3: If the target has a mapped code, use that as the inputValue
-	if *targetCode != "" {
-		stringInputValue = *targetCode
-		log.Debug().Msgf("Using mapped code: %s", stringInputValue)
-		log.Debug().Msgf("Using mapped display: %s", *targetDisplay) // not yet changed
+		return nil, err
 	}
 
-	return stringInputValue, nil
+	// Return the mapped value
+	return mappedCode, nil
 }
