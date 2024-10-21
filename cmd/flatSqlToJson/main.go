@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"unicode"
 
 	"os"
 	"reflect"
@@ -17,73 +18,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// ConceptMapperMap is a nested map structure for efficient lookups
-// The structure is: fhirPath -> sourceSystem -> sourceCode -> target
-type ConceptMapperMap map[string]map[string]map[string]target
-
-// TargetCode represents the mapped code in the target system
-type target struct {
-	system  string
-	code    string
-	display string
-}
-
-var globalConceptMaps ConceptMapperMap
-
 var FHIRResourceMap = map[string]func() interface{}{
 	"Patient":     func() interface{} { return &fhir.Patient{} },
 	"Observation": func() interface{} { return &fhir.Observation{} },
-}
-
-func initializeGenderConceptMap() {
-	globalConceptMaps = ConceptMapperMap{
-		"Patient.gender": {
-			"http://hl7.org/fhir/administrative-gender": {
-				"male": target{
-					system:  "http://snomed.info/sct",
-					code:    "248153007",
-					display: "Male",
-				},
-				"female": target{
-					system:  "http://snomed.info/sct",
-					code:    "248152002",
-					display: "Female",
-				},
-				"other": target{
-					system:  "http://snomed.info/sct",
-					code:    "394743007",
-					display: "Other",
-				},
-				"unknown": target{
-					system:  "http://snomed.info/sct",
-					code:    "unknown",
-					display: "Unknown",
-				},
-			},
-			"": { // For system-agnostic mappings
-				"M": target{
-					system:  "http://hl7.org/fhir/administrative-gender",
-					code:    "male",
-					display: "Male",
-				},
-				"F": target{
-					system:  "http://hl7.org/fhir/administrative-gender",
-					code:    "female",
-					display: "Female",
-				},
-				"O": target{
-					system:  "http://hl7.org/fhir/administrative-gender",
-					code:    "other",
-					display: "Other",
-				},
-				"U": target{
-					system:  "http://hl7.org/fhir/administrative-gender",
-					code:    "unknown",
-					display: "Unknown",
-				},
-			},
-		},
-	}
 }
 
 func main() {
@@ -136,18 +73,18 @@ func main() {
 		log.Debug().Msg("No data available to write to JSON file")
 	}
 
-	// Set up search parameters
+	//Set up search parameters
 	searchParameterMap := SearchParameterMap{
-		// "Patient.identifier": SearchParameter{
-		// 	Code:  "identifier",
-		// 	Type:  "token",
-		// 	Value: "https://santeon.nl|123",
-		// },
+		"Patient.identifier": SearchParameter{
+			Code:  "identifier",
+			Type:  "token",
+			Value: "https://santeon.nl|123",
+		},
 	}
 
 	// Initialize concept maps
 	// TODO: remove after starting to use the conceptmaps from the config folder
-	initializeGenderConceptMap()
+	//initializeGenderConceptMap()
 
 	// Load StructureDefinitions
 	err = LoadStructureDefinitions(log)
@@ -169,10 +106,8 @@ func main() {
 
 	// Check if ValueSetToConceptMap is filled correctly
 	for valueset, conceptMap := range ValueSetToConceptMap {
-		fmt.Printf("Valueset: %s, Conceptmap ID: %s\n", valueset, *conceptMap.Id)
+		log.Debug().Msgf("Valueset: %s, Conceptmap ID: %s\n", valueset, *conceptMap.Id)
 	}
-
-	ExampleDetermineConceptMapforPath()
 
 	// TODO
 	// Check if FhirPathToValueset is filled correctly
@@ -362,6 +297,7 @@ func populateStruct(structPath string, value reflect.Value, parentID string, row
 			}
 
 			filterResult, err := ApplyFilter(structPath, value, searchParameterMap, log)
+			log.Debug().Msg("Hello Applying filter")
 			if err != nil {
 				return nil, err
 			}
@@ -434,8 +370,6 @@ func populateStructFields(structPath string, structPointer interface{}, row RowD
 	structType := structValue.Type()
 	log.Debug().Msgf("Struct type: %s", structType.Name())
 
-	//if structType == "CodeableConcept" |
-
 	for key, value := range row.Data {
 		for i := 0; i < structType.NumField(); i++ {
 			fieldName := structType.Field(i).Name
@@ -446,10 +380,72 @@ func populateStructFields(structPath string, structPointer interface{}, row RowD
 					return err
 				}
 				fhirPath := structPath + "." + strings.ToLower(fieldName)
+				// TODO: I think this might for a code/system not be the right place for the filter?
+				// Mogelijk aalleen op bovenste niveau gaat het mis?
 				if _, err := ApplyFilter(fhirPath, reflect.ValueOf(value), searchParameterMap, log); err != nil {
+					log.Debug().Msgf("Not hello to apply filter: %v", err)
 					return err
 				}
 			}
+		}
+	}
+
+	// Do conceptmapping for Coding and Quantity
+
+	// CodeableConcept does not need to be checked, as it is a struct with a Coding field
+	if structType.Name() == "Coding" || structType.Name() == "Quantity" {
+		fhirPath := getValueSetBindingPath(structPath, structType.Name())
+		log.Debug().Msgf("fhirPath to determine Valuest: %s", fhirPath)
+		_, exists := FhirPathToValueset[fhirPath] // this is the same as in setField
+		if exists {
+			log.Debug().Msgf("fhirPath %s is in FhirPathToValueset", fhirPath)
+
+			// Collect the conceptmaps for the fhirPath
+			conceptMap, err := getConceptMapForFhirPath(fhirPath, log)
+			if err != nil {
+				log.Debug().Msgf("failed to get conceptmap for fhirPath: %v", err)
+			} else {
+				log.Debug().Msgf("ConceptMap for fhirPath %s: %v", fhirPath, *conceptMap.Id)
+
+				for i := 0; i < structType.NumField(); i++ {
+					fieldName := structType.Field(i).Name
+					fieldNameLower := strings.ToLower(fieldName)
+
+					if fieldNameLower == "system" || fieldNameLower == "code" || fieldNameLower == "display" {
+						log.Debug().Msgf("This field might need conceptmapping: %s", fieldNameLower)
+					}
+				}
+
+				// Set the code field if it exists in the struct
+				codeField := structValue.FieldByName("Code")
+				codeFieldValue := getStringValue(codeField.Elem())
+				log.Debug().Msgf("Curent code fieldvalue: %s", codeFieldValue)
+
+				targetCode, targetDisplay, err := TranslateCode(conceptMap, &codeFieldValue, log)
+				if err != nil {
+					return fmt.Errorf("failed to map concept code: %v", err)
+				}
+				log.Debug().Msgf("Mapped concept code: %v", *targetCode)
+
+				if codeField.IsValid() && codeField.CanSet() {
+					if err := SetField(structPath, structPointer, "Code", *targetCode, log); err != nil {
+						return err
+					}
+				}
+				log.Debug().Msgf("targetDisplay could be used for display: %s", *targetDisplay)
+
+				// Step 3: If the target has a mapped code, use that as the inputValue
+				/*if *targetCode != "" {
+					stringInputValue = *targetCode // Use the mapped code
+					log.Debug().Msgf("Using mapped code: %s", stringInputValue)
+					log.Debug().Msgf("Using mapped display: %s", *targetDisplay) // not yet changed
+				}
+
+				inputValue = stringInputValue
+				log.Debug().Msgf("inputValue after concept mapping: %v", inputValue)*/
+			}
+		} else {
+			log.Debug().Msgf("fhirPath %s is not in FhirPathToValueset", fhirPath)
 		}
 	}
 
@@ -494,36 +490,58 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 		return nil
 	}
 
-	fhirPath := structPath + "." + strings.ToLower(structFieldName)
-	log.Debug().Msgf("fhirPath: %s", fhirPath)
-	if fhirPath == "Patient.gender" {
-		// Step 1: Convert inputValue to a string for concept mapping
-		inputValueType := reflect.TypeOf(inputValue)
-		log.Debug().Msgf("inputValueType: %s", inputValueType)
-		stringInputValue := getStringValue(reflect.ValueOf(inputValue))
-		log.Debug().Msgf("Converted inputValue to string: %s", stringInputValue)
+	// Do conceptmapping for codes
+	structFieldType := structField.Type()
+	log.Debug().Msgf("Struct type: %s", structFieldType)
+	if typeHasCodeMethod(structFieldType) { // Suggesting it is a code type
+		fmt.Println("The type has a Code() method, likely indicating a 'code' type.")
+		fhirPath := structPath + "." + strings.ToLower(structFieldName)
+		fhirPath = extractAndCapitalizeLastTwoParts(fhirPath)
+		log.Debug().Msgf("fhirPath: %s", fhirPath)
 
-		// Step 2: Attempt to map the concept code before doing anything else
-		// Assuming "Patient.gender" is a placeholder, adjust as necessary for your use case
-		target, err := mapConceptCode(stringInputValue, "Patient.gender", log)
-		if err != nil {
-			return fmt.Errorf("failed to map concept code: %v", err)
+		// Check if fhirPath is in FhirPathToValueset
+		_, exists := FhirPathToValueset[fhirPath]
+		if exists {
+			log.Debug().Msgf("fhirPath %s is in FhirPathToValueset", fhirPath)
+
+			// Collect the conceptmaps for the fhirPath
+			conceptMap, err := getConceptMapForFhirPath(fhirPath, log)
+			if err != nil {
+				log.Debug().Msgf("failed to get conceptmap for fhirPath: %v", err)
+			} else {
+				log.Debug().Msgf("ConceptMap for fhirPath %s: %v", fhirPath, *conceptMap.Id)
+
+				// Step 1: Convert inputValue to a string for concept mapping
+				inputValueType := reflect.TypeOf(inputValue)
+				log.Debug().Msgf("inputValueType: %s", inputValueType)
+				stringInputValue := getStringValue(reflect.ValueOf(inputValue))
+				log.Debug().Msgf("Converted inputValue to string: %s", stringInputValue)
+
+				targetCode, targetDisplay, err := TranslateCode(conceptMap, &stringInputValue, log)
+				if err != nil {
+					return fmt.Errorf("failed to map concept code: %v", err)
+				}
+				log.Debug().Msgf("Mapped concept code: %v", *targetCode)
+
+				// Step 3: If the target has a mapped code, use that as the inputValue
+				if *targetCode != "" {
+					stringInputValue = *targetCode // Use the mapped code
+					log.Debug().Msgf("Using mapped code: %s", stringInputValue)
+					log.Debug().Msgf("Using mapped display: %s", *targetDisplay) // not yet changed
+				}
+
+				inputValue = stringInputValue
+				log.Debug().Msgf("inputValue after concept mapping: %v", inputValue)
+			}
+		} else {
+			log.Debug().Msgf("fhirPath %s is not in FhirPathToValueset", fhirPath)
 		}
-		log.Debug().Msgf("Mapped concept code: %v", target)
-
-		// Step 3: If the target has a mapped code, use that as the inputValue
-		if target.code != "" {
-			stringInputValue = target.code // Use the mapped code
-			log.Debug().Msgf("Using mapped code: %s", stringInputValue)
-		}
-
-		inputValue = stringInputValue
-
 	}
 
 	// Try UnmarshalJSON for the field and its address
 	for _, field := range []reflect.Value{structField, structField.Addr()} {
 		if field.CanInterface() && field.Type().Implements(reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()) {
+			// Prevent panic when field is a nil pointer
 			if field.Kind() == reflect.Ptr {
 				if field.IsNil() {
 					field.Set(reflect.New(field.Type().Elem()))
@@ -630,26 +648,16 @@ func hasDataForPath(resultMap map[string][]RowData, path string) bool {
 	return false
 }
 
-func extendFhirPath(parentPath, childName string) string {
-	return fmt.Sprintf("%s.%s", parentPath, strings.ToLower(childName))
-}
-
-func mapConceptCode(value string, fhirPath string, log zerolog.Logger) (target, error) {
-	// Simple implementation without system handling
-	log.Debug().Str("fhirPath", fhirPath).Str("sourceCode", value).Msg("Mapping concept code")
-	if conceptMap, ok := globalConceptMaps[fhirPath]; ok {
-		if systemMap, ok := conceptMap[""]; ok {
-			if target, ok := systemMap[value]; ok {
-				log.Debug().
-					Str("fhirPath", fhirPath).
-					Str("sourceCode", value).
-					Str("targetCode", target.code).
-					Msg("Applied concept mapping")
-				return target, nil
-			}
-		}
+// Helper function to capitalize the first letter and make the rest lowercase
+func capitalizeFirstLetter(s string) string {
+	if len(s) == 0 {
+		return s
 	}
-
-	// If no mapping found, return the original value
-	return target{code: value}, nil
+	// Convert first rune to uppercase and the rest to lowercase
+	runes := []rune(s)
+	runes[0] = unicode.ToUpper(runes[0])
+	for i := 1; i < len(runes); i++ {
+		runes[i] = unicode.ToLower(runes[i])
+	}
+	return string(runes)
 }
