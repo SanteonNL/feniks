@@ -361,9 +361,9 @@ func populateStructFields(structPath string, structPointer interface{}, row RowD
 		}
 	}
 
-	// Apply concept mapping for Coding and Quantity
+	// Apply concept mapping for Coding (including CodeableConcept) and Quantity
 	if structType.Name() == "Coding" || structType.Name() == "Quantity" {
-		if err := applyConceptMapping(structPath, structType, structPointer, log); err != nil {
+		if err := applyConceptMappingForStruct(structPath, structType, structPointer, log); err != nil {
 			return err
 		}
 	}
@@ -409,52 +409,18 @@ func SetField(structPath string, structPointer interface{}, structFieldName stri
 		return nil
 	}
 
-	// Do conceptmapping for codes
+	// Perform concept mapping for codes if applicable
 	structFieldType := structField.Type()
-	log.Debug().Msgf("Struct type: %s", structFieldType)
 	if typeHasCodeMethod(structFieldType) { // Suggesting it is a code type
-		fmt.Println("The type has a Code() method, likely indicating a 'code' type.")
-		fhirPath := structPath + "." + strings.ToLower(structFieldName)
-		fhirPath = extractAndCapitalizeLastTwoParts(fhirPath)
-		log.Debug().Msgf("fhirPath: %s", fhirPath)
+		log.Debug().Msgf("The type has a Code() method, likely indicating a 'code' type.")
 
-		// Check if fhirPath is in FhirPathToValueset
-		_, exists := FhirPathToValueset[fhirPath]
-		if exists {
-			log.Debug().Msgf("fhirPath %s is in FhirPathToValueset", fhirPath)
-
-			// Collect the conceptmaps for the fhirPath
-			conceptMap, err := getConceptMapForFhirPath(fhirPath, log)
-			if err != nil {
-				log.Debug().Msgf("failed to get conceptmap for fhirPath: %v", err)
-			} else {
-				log.Debug().Msgf("ConceptMap for fhirPath %s: %v", fhirPath, *conceptMap.Id)
-
-				// Step 1: Convert inputValue to a string for concept mapping
-				inputValueType := reflect.TypeOf(inputValue)
-				log.Debug().Msgf("inputValueType: %s", inputValueType)
-				stringInputValue := getStringValue(reflect.ValueOf(inputValue))
-				log.Debug().Msgf("Converted inputValue to string: %s", stringInputValue)
-
-				targetCode, targetDisplay, err := TranslateCode(conceptMap, &stringInputValue, log)
-				if err != nil {
-					return fmt.Errorf("failed to map concept code: %v", err)
-				}
-				log.Debug().Msgf("Mapped concept code: %v", *targetCode)
-
-				// Step 3: If the target has a mapped code, use that as the inputValue
-				if *targetCode != "" {
-					stringInputValue = *targetCode // Use the mapped code
-					log.Debug().Msgf("Using mapped code: %s", stringInputValue)
-					log.Debug().Msgf("Using mapped display: %s", *targetDisplay) // not yet changed
-				}
-
-				inputValue = stringInputValue
-				log.Debug().Msgf("inputValue after concept mapping: %v", inputValue)
-			}
-		} else {
-			log.Debug().Msgf("fhirPath %s is not in FhirPathToValueset", fhirPath)
+		// Call the concept mapping function
+		mappedValue, err := applyConceptMappingForField(structPath, structFieldName, inputValue, log)
+		if err != nil {
+			return err
 		}
+		inputValue = mappedValue
+		log.Debug().Msgf("inputValue after concept mapping: %v", inputValue)
 	}
 
 	// Try UnmarshalJSON for the field and its address

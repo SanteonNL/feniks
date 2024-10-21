@@ -143,7 +143,7 @@ func printConceptMapDetails(conceptMap *fhir.ConceptMap) {
 		}*/
 }
 
-func applyConceptMapping(structPath string, structType reflect.Type, structPointer interface{}, log zerolog.Logger) error {
+func applyConceptMappingForStruct(structPath string, structType reflect.Type, structPointer interface{}, log zerolog.Logger) error {
 	// Get the FHIR path for ValueSet binding
 	fhirPath := getValueSetBindingPath(structPath, structType.Name())
 	log.Debug().Msgf("FHIR Path to determine ValueSet: %s", fhirPath)
@@ -197,4 +197,50 @@ func applyConceptMapping(structPath string, structType reflect.Type, structPoint
 	}
 
 	return nil
+}
+
+func applyConceptMappingForField(structPath string, structFieldName string, inputValue interface{}, log zerolog.Logger) (interface{}, error) {
+	// Construct the FHIR path
+	fhirPath := structPath + "." + strings.ToLower(structFieldName)
+	fhirPath = extractAndCapitalizeLastTwoParts(fhirPath)
+	log.Debug().Msgf("FHIR Path: %s", fhirPath)
+
+	// Check if fhirPath is in FhirPathToValueset
+	_, exists := FhirPathToValueset[fhirPath]
+	if !exists {
+		log.Debug().Msgf("FHIR Path %s is not in FhirPathToValueset", fhirPath)
+		return inputValue, nil
+	}
+
+	log.Debug().Msgf("FHIR Path %s is in FhirPathToValueset", fhirPath)
+
+	// Collect the ConceptMap for the FHIR path
+	conceptMap, err := getConceptMapForFhirPath(fhirPath, log)
+	if err != nil {
+		log.Debug().Msgf("Failed to get ConceptMap for FHIR Path: %v", err)
+		// err does not need to be returned....
+		return inputValue, nil
+	}
+
+	log.Debug().Msgf("ConceptMap for FHIR Path %s: %v", fhirPath, *conceptMap.Id)
+
+	// Step 1: Convert inputValue to a string for concept mapping
+	stringInputValue := getStringValue(reflect.ValueOf(inputValue))
+	log.Debug().Msgf("Converted inputValue to string: %s", stringInputValue)
+
+	// Perform concept mapping using the ConceptMap
+	targetCode, targetDisplay, err := TranslateCode(conceptMap, &stringInputValue, log)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to map concept code: %v", err)
+	}
+	log.Debug().Msgf("Mapped concept code: %v", *targetCode)
+
+	// Step 3: If the target has a mapped code, use that as the inputValue
+	if *targetCode != "" {
+		stringInputValue = *targetCode
+		log.Debug().Msgf("Using mapped code: %s", stringInputValue)
+		log.Debug().Msgf("Using mapped display: %s", *targetDisplay) // not yet changed
+	}
+
+	return stringInputValue, nil
 }
