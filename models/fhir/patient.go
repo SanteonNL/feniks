@@ -33,7 +33,7 @@ type Patient struct {
 	Name                 []HumanName            `bson:"name,omitempty" json:"name,omitempty" db:"name"`
 	Telecom              []ContactPoint         `bson:"telecom,omitempty" json:"telecom,omitempty" db:"telecom"`
 	Gender               *AdministrativeGender  `bson:"gender,omitempty" json:"gender,omitempty" db:"gender"`
-	BirthDate            *DateTime                `bson:"birthDate,omitempty" json:"birthDate,omitempty" db:"birth_date"`
+	BirthDate            *Date               `bson:"birthDate,omitempty" json:"birthDate,omitempty" db:"birth_date"`
 	DeceasedBoolean      *bool                  `bson:"deceasedBoolean,omitempty" json:"deceasedBoolean,omitempty" db:"deceased_boolean"`
 	DeceasedDateTime     *string                `bson:"deceasedDateTime,omitempty" json:"deceasedDateTime,omitempty" db:"deceased_date_time"`
 	Address              []Address              `bson:"address,omitempty" json:"address,omitempty" db:"address"`

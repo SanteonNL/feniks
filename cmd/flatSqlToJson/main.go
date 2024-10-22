@@ -137,11 +137,11 @@ func main() {
 
 	// Set up search parameters
 	searchParameterMap := SearchParameterMap{
-		// "Patient.identifier": SearchParameter{
-		// 	Code:  "identifier",
-		// 	Type:  "token",
-		// 	Value: "https://santeon.nl|123",
-		// },
+		"Patient.identifier": SearchParameter{
+			Code:  "identifier",
+			Type:  "token",
+			Value: "http://fhir.nl/fhir/NamingSystem/bsn|22a1s",
+		},
 	}
 
 	// Initialize concept maps
