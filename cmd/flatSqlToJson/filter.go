@@ -53,7 +53,7 @@ func ApplyFilter(structPath string, structFieldValue reflect.Value, searchParame
 	}
 	log.Debug().
 		Str("structpath", structPath).
-		Str("structfield", structFieldValue.Type().Name()).
+		Str("structfieldType", structFieldValue.Type().Name()).
 		Bool("passed", filterResult.Passed).
 		Msg("Apply filter result")
 	if !filterResult.Passed {
@@ -99,9 +99,12 @@ func filterSlice(field reflect.Value, searchParameter SearchParameter, fhirPath 
 }
 
 func filterStruct(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Str("field", fhirPath).Str("fieldType", field.Type().Name()).Msg("Filtering struct field")
 	switch field.Type().Name() {
 	case "Identifier", "CodeableConcept", "Coding":
 		return filterTokenField(field, searchParameter, fhirPath, log)
+	case "Time":
+		return filterDateOrDateTimeField(field, searchParameter, fhirPath)
 	default:
 		// For other structs, we might want to check nested fields
 		for i := 0; i < field.NumField(); i++ {
@@ -166,36 +169,107 @@ func filterBasicType(field reflect.Value, searchParameter SearchParameter, fhirP
 	return &FilterResult{Passed: true}, nil
 }
 
-func filterDateField(field reflect.Value, searchParameter SearchParameter, fhirPath string) (bool, error) {
-	filterDate, err := time.Parse("2006-01-02", searchParameter.Value)
-	if err != nil {
-		return false, fmt.Errorf("invalid date format for field %s: %v", fhirPath, err)
+// parseDateFilter parses a date filter value, handling prefixes
+func parseDateFilter(value string) (string, string) {
+	prefixes := []string{"eq", "ne", "gt", "lt", "ge", "le"}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(value, prefix) {
+			return prefix, strings.TrimPrefix(value, prefix)
+		}
 	}
-
-	fieldTime, err := getTimeFromField(field)
-	if err != nil {
-		return false, fmt.Errorf("error getting time from field %s: %v", fhirPath, err)
-	}
-
-	switch searchParameter.Comparator {
-	case "eq", "":
-		return fieldTime.Equal(filterDate), nil
-	case "gt":
-		return fieldTime.After(filterDate), nil
-	case "lt":
-		return fieldTime.Before(filterDate), nil
-	case "ge":
-		return !fieldTime.Before(filterDate), nil
-	case "le":
-		return !fieldTime.After(filterDate), nil
-	default:
-		return false, fmt.Errorf("unsupported date comparator for field %s: %s", fhirPath, searchParameter.Comparator)
-	}
+	return "eq", value // default to equality if no prefix
 }
 
+func filterDateOrDateTimeField(field reflect.Value, searchParameter SearchParameter, fhirPath string) (*FilterResult, error) {
+	prefix, dateStr := parseDateFilter(searchParameter.Value)
+
+	// Parse the search date
+	searchDate, err := parsePartialDate(dateStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid search date format: %v", err)
+	}
+
+	// Get the field's date value
+	fieldDateOrDateTime, err := getDateOrDateTimeValue(field)
+	if err != nil {
+		return nil, fmt.Errorf("error getting field date: %v", err)
+	}
+
+	// Compare dates based on prefix
+	passed := compareDateTimes(fieldDateOrDateTime, searchDate, prefix)
+
+	return &FilterResult{
+		Passed:  passed,
+		Message: fmt.Sprintf("Date comparison %s: field=%v search=%v", prefix, fieldDateOrDateTime.Format("2006-01-02T15:04:05.000Z"), searchDate.Format("2006-01-02T15:04:05.000Z")),
+	}, nil
+}
+
+// parsePartialDate handles parsing of partial dates (YYYY, YYYY-MM, YYYY-MM-DD)
+func parsePartialDate(dateStr string) (time.Time, error) {
+	formats := []string{
+		"2006",
+		"2006-01",
+		"2006-01-02",
+		"2006-01-02T15:04:05.000Z",
+		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05-07:00",
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, dateStr); err == nil {
+			return t, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unsupported date format: %s", dateStr)
+}
 func setFieldToZeroIfNotEmpty(field reflect.Value) {
 	if !field.IsZero() {
 		field.Set(reflect.Zero(field.Type()))
+	}
+}
+
+// getDateOrDateTimeValue extracts the time.Time value from either a Date or DateTime field
+func getDateOrDateTimeValue(field reflect.Value) (time.Time, error) {
+	if !field.IsValid() {
+		return time.Time{}, fmt.Errorf("invalid field")
+	}
+
+	fieldType := field.Type().Name()
+	switch fieldType {
+	case "DateTime":
+		return field.FieldByName("Time").Interface().(time.Time), nil
+	case "Date":
+		return field.FieldByName("Time").Interface().(time.Time), nil
+	case "Time":
+		// Handle raw time.Time fields
+		if t, ok := field.Interface().(time.Time); ok {
+			return t, nil
+		}
+		return time.Time{}, fmt.Errorf("could not convert Time field to time.Time")
+	default:
+		return time.Time{}, fmt.Errorf("field type must be Date, DateTime, or Time, got: %s", fieldType)
+	}
+}
+
+// compareDateTimes compares two date/datetimes based on the comparison prefix
+func compareDateTimes(fieldDateTime, searchDateTime time.Time, prefix string) bool {
+	println(prefix)
+	switch prefix {
+	case "eq":
+		return fieldDateTime.Equal(searchDateTime)
+	case "ne":
+		return !fieldDateTime.Equal(searchDateTime)
+	case "gt":
+		return fieldDateTime.After(searchDateTime)
+	case "lt":
+		return fieldDateTime.Before(searchDateTime)
+	case "ge":
+		return fieldDateTime.After(searchDateTime) || fieldDateTime.Equal(searchDateTime)
+	case "le":
+		return fieldDateTime.Before(searchDateTime) || fieldDateTime.Equal(searchDateTime)
+	default:
+		return false
 	}
 }
 
