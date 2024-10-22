@@ -47,7 +47,7 @@ func ApplyFilter(structPath string, structFieldValue reflect.Value, searchParame
 		return &FilterResult{Passed: true}, nil
 	}
 
-	filterResult, err := FilterField(structFieldValue, searchParameter, structPath, log)
+	filterResult, err := determineFilterType(structFieldValue, searchParameter, structPath, log)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func ApplyFilter(structPath string, structFieldValue reflect.Value, searchParame
 	return &FilterResult{Passed: true}, nil
 }
 
-func FilterField(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
+func determineFilterType(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
 
 	if field.IsZero() {
 		log.Debug().Str("field", fhirPath).Msg("Field is already zero value, skipping filtering")
@@ -79,7 +79,7 @@ func FilterField(field reflect.Value, searchParameter SearchParameter, fhirPath 
 		if field.IsNil() {
 			return &FilterResult{Passed: true}, nil
 		}
-		return FilterField(field.Elem(), searchParameter, fhirPath, log)
+		return determineFilterType(field.Elem(), searchParameter, fhirPath, log)
 	default:
 		return filterBasicType(field, searchParameter, fhirPath, log)
 	}
@@ -87,7 +87,7 @@ func FilterField(field reflect.Value, searchParameter SearchParameter, fhirPath 
 
 func filterSlice(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
 	for i := 0; i < field.Len(); i++ {
-		result, err := FilterField(field.Index(i), searchParameter, fhirPath, log)
+		result, err := determineFilterType(field.Index(i), searchParameter, fhirPath, log)
 		if err != nil {
 			return nil, err
 		}
@@ -108,7 +108,7 @@ func filterStruct(field reflect.Value, searchParameter SearchParameter, fhirPath
 	default:
 		// For other structs, we might want to check nested fields
 		for i := 0; i < field.NumField(); i++ {
-			result, err := FilterField(field.Field(i), searchParameter, fmt.Sprintf("%s.%s", fhirPath, field.Type().Field(i).Name), log)
+			result, err := determineFilterType(field.Field(i), searchParameter, fmt.Sprintf("%s.%s", fhirPath, field.Type().Field(i).Name), log)
 			if err != nil {
 				return nil, err
 			}
