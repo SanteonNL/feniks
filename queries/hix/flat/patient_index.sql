@@ -9,7 +9,7 @@ SELECT
     'official' AS "name[0].use",
     --'Tommy' AS "name[0].given",
     'Hetterscheid' AS "name[0].family",
-    '31-070-1992' AS "birthDate",
+    '1992-01-01' AS "birthDate",
    -- 'male' AS "gender",
    -- '2e Daalsedijk 106' AS "address[0].line",
     '3565AA' AS "address[0].postalCode",
