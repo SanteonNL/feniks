@@ -140,7 +140,7 @@ func main() {
 		"Patient.identifier": SearchParameter{
 			Code:  "identifier",
 			Type:  "token",
-			Value: "http://fhir.nl/fhir/NamingSystem/bsn|22a1s",
+			Value: "http://fhir.nl/fhir/NamingSystem/bsn|22221s",
 		},
 	}
 

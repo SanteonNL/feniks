@@ -27,3 +27,4 @@ go.work
 
 cmd/artdecor/conceptmap_*.csv
 output/temp/*.json
+output/temp/*.json
