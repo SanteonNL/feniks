@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/rs/zerolog"
 )
 
@@ -64,22 +65,65 @@ func ApplyFilter(structPath string, structFieldValue reflect.Value, searchParame
 }
 
 func determineFilterType(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
+	// Debug log for type inspection
+	log.Debug().
+		Str("field", fhirPath).
+		Str("kind", field.Kind().String()).
+		Str("type", field.Type().String()).
+		Str("type.Name()", field.Type().Name()).
+		Str("type.PkgPath()", field.Type().PkgPath()).
+		Msg("Type inspection")
 
-	if field.IsZero() {
-		log.Debug().Str("field", fhirPath).Msg("Field is already zero value, skipping filtering")
-		return &FilterResult{Passed: true}, nil
+	// Handle pointer types first
+	if field.Kind() == reflect.Ptr {
+		if field.IsNil() {
+			return &FilterResult{Passed: true}, nil
+		}
+		field = field.Elem()
 	}
 
+	// Check if it's a FHIR Date type by examining the full type path
+	fullTypeName := fmt.Sprintf("%s.%s", field.Type().PkgPath(), field.Type().Name())
+	if strings.HasSuffix(field.Type().String(), "fhir.Date") || strings.HasSuffix(fullTypeName, "fhir.Date") {
+		log.Debug().
+			Str("field", fhirPath).
+			Str("fullTypeName", fullTypeName).
+			Msg("Found FHIR Date type")
+		//return filterFHIRDate(field, searchParameter, fhirPath, log)
+	}
+
+	// For pointer types, check the element type
+	if field.Kind() == reflect.Ptr {
+		elemField := field.Elem()
+		if fhir.IsDateType(elemField.Type()) ||
+			(elemField.IsValid() && fhir.IsDate(elemField.Interface())) {
+			log.Debug().Msg("Found Date type after dereferencing pointer")
+			return filterDateField(elemField, searchParameter, fhirPath, log)
+		}
+	}
+
+	// Get field type for switch
+	fieldType := field.Type()
+
+	switch fieldType.Name() {
+	case "Date":
+		log.Debug().Str("field", fhirPath).Msg("Recognized Date type field")
+		return filterDateField(field, searchParameter, fhirPath, log)
+	}
+
+	// Then handle by kind
 	switch field.Kind() {
 	case reflect.Slice:
 		return filterSlice(field, searchParameter, fhirPath, log)
 	case reflect.Struct:
 		return filterStruct(field, searchParameter, fhirPath, log)
-	case reflect.Ptr:
-		if field.IsNil() {
-			return &FilterResult{Passed: true}, nil
+	case reflect.String:
+		// If it's a string but the search parameter is a date type, try to handle it as a date
+		if searchParameter.Type == "date" {
+			log.Debug().Str("field", fhirPath).Msg("Found string field with date search parameter")
+			return filterDateField(field, searchParameter, fhirPath, log)
 		}
-		return determineFilterType(field.Elem(), searchParameter, fhirPath, log)
+		return filterBasicType(field, searchParameter, fhirPath, log)
 	default:
 		return filterBasicType(field, searchParameter, fhirPath, log)
 	}
@@ -99,6 +143,7 @@ func filterSlice(field reflect.Value, searchParameter SearchParameter, fhirPath 
 }
 
 func filterStruct(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
+	log.Debug().Str("field", fhirPath).Str("type", field.Type().Name()).Msg("Filtering struct field")
 	switch field.Type().Name() {
 	case "Identifier", "CodeableConcept", "Coding":
 		return filterTokenField(field, searchParameter, fhirPath, log)
@@ -166,31 +211,52 @@ func filterBasicType(field reflect.Value, searchParameter SearchParameter, fhirP
 	return &FilterResult{Passed: true}, nil
 }
 
-func filterDateField(field reflect.Value, searchParameter SearchParameter, fhirPath string) (bool, error) {
+func filterDateField(field reflect.Value, searchParameter SearchParameter, fhirPath string, log zerolog.Logger) (*FilterResult, error) {
+	if searchParameter.Type != "date" {
+		log.Debug().
+			Str("field", fhirPath).
+			Str("expectedType", "date").
+			Str("actualType", searchParameter.Type).
+			Msg("Mismatched search parameter type for date field")
+		return &FilterResult{Passed: true}, nil // Pass if not explicitly searching by date
+	}
+
 	filterDate, err := time.Parse("2006-01-02", searchParameter.Value)
 	if err != nil {
-		return false, fmt.Errorf("invalid date format for field %s: %v", fhirPath, err)
+		return nil, fmt.Errorf("invalid date format for field %s: %v", fhirPath, err)
 	}
 
-	fieldTime, err := getTimeFromField(field)
-	if err != nil {
-		return false, fmt.Errorf("error getting time from field %s: %v", fhirPath, err)
+	// Assuming Date type has a Time method or similar to get the time.Time value
+	var fieldTime time.Time
+	if dateVal, ok := field.Interface().(interface{ Time() time.Time }); ok {
+		fieldTime = dateVal.Time()
+	} else {
+		return nil, fmt.Errorf("Date field %s doesn't implement Time() method", fhirPath)
 	}
 
+	passed := false
 	switch searchParameter.Comparator {
 	case "eq", "":
-		return fieldTime.Equal(filterDate), nil
+		passed = fieldTime.Equal(filterDate)
 	case "gt":
-		return fieldTime.After(filterDate), nil
+		passed = fieldTime.After(filterDate)
 	case "lt":
-		return fieldTime.Before(filterDate), nil
+		passed = fieldTime.Before(filterDate)
 	case "ge":
-		return !fieldTime.Before(filterDate), nil
+		passed = !fieldTime.Before(filterDate)
 	case "le":
-		return !fieldTime.After(filterDate), nil
+		passed = !fieldTime.After(filterDate)
 	default:
-		return false, fmt.Errorf("unsupported date comparator for field %s: %s", fhirPath, searchParameter.Comparator)
+		return nil, fmt.Errorf("unsupported date comparator for field %s: %s", fhirPath, searchParameter.Comparator)
 	}
+
+	if passed {
+		return &FilterResult{Passed: true}, nil
+	}
+	return &FilterResult{
+		Passed:  false,
+		Message: fmt.Sprintf("Date field %s didn't match filter criteria", fhirPath),
+	}, nil
 }
 
 func setFieldToZeroIfNotEmpty(field reflect.Value) {

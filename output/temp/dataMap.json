@@ -1,87 +1,63 @@
 {
-  "Observation": [
+  "Patient": [
     {
       "ID": "",
       "ParentID": "",
       "Data": {
-        "effectiveDateTime": "2021-10-30T19:19:19Z",
-        "status": "final"
+        "active": "true",
+        "birthdate": "1992-01-01"
       }
     }
   ],
-  "Observation.Patient": [
+  "Patient.address": [
     {
-      "ID": "1",
+      "ID": "123",
       "ParentID": "",
       "Data": {
-        "id": "456"
+        "city": "Utrecht",
+        "country": "NL",
+        "postalCode": "3565AA"
       }
     }
   ],
-  "Observation.category": [
+  "Patient.identifier": [
     {
-      "ID": "1",
+      "ID": "123",
       "ParentID": "",
       "Data": {
-        "id": "1",
-        "text": "text"
-      }
-    },
-    {
-      "ID": "1_1",
-      "ParentID": "",
-      "Data": {
-        "id": "1",
-        "text": "text1"
+        "system": "http://fhir.nl/fhir/NamingSystem/bsn",
+        "value": "22221s"
       }
     }
   ],
-  "Observation.category.coding": [
+  "Patient.name": [
     {
-      "ID": "1",
-      "ParentID": "1",
+      "ID": "123",
+      "ParentID": "",
       "Data": {
-        "code": "laboratory",
-        "display": "Laboratory",
-        "system": "http://terminology.hl7.org/CodeSystem/observation-category"
-      }
-    },
-    {
-      "ID": "1_1",
-      "ParentID": "1_1",
-      "Data": {
-        "code": "laboratory1",
-        "display": "Laboratory1",
-        "system": "http://terminology.hl7.org/CodeSystem/observation-category"
-      }
-    },
-    {
-      "ID": "1_1_2",
-      "ParentID": "1_1",
-      "Data": {
-        "code": "nogiets",
-        "display": "nogiets",
-        "system": "http://terminology.hl7.org/CodeSystem/observation-category"
+        "family": "Hetterscheid",
+        "use": "official"
       }
     }
   ],
-  "Observation.subject": [
+  "Patient.telecom": [
     {
-      "ID": "1",
+      "ID": "123",
       "ParentID": "",
       "Data": {
-        "reference": "Patient/456"
+        "system": "phone",
+        "use": "home",
+        "value": "0650989181"
       }
     }
   ],
-  "Observation.valuequantity": [
+  "Patient.text": [
     {
-      "ID": "1",
+      "ID": "123",
       "ParentID": "",
       "Data": {
-        "system": "http://unitsofmeasure.org",
-        "unit": "mg/dL",
-        "value": "NC42"
+        "div": "\u003cdiv xmlns=\"http://www.w3.org/1999/xhtml\"\u003ePatient information\u003c/div\u003e",
+        "status": "generated"
       }
     }
   ]
