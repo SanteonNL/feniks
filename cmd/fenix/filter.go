@@ -10,10 +10,13 @@ import (
 
 // Part 3: Filter System
 func (rp *ResourceProcessor) checkFilter(path string, field reflect.Value) (*FilterResult, error) {
+
 	param, exists := rp.searchParams[path]
 	if !exists {
 		return &FilterResult{Passed: true}, nil
 	}
+
+	rp.log.Debug().Str("path", path).Msg("Applying filter")
 
 	switch param.Type {
 	case "date":
@@ -32,6 +35,8 @@ func (rp *ResourceProcessor) checkFilter(path string, field reflect.Value) (*Fil
 }
 
 func (rp *ResourceProcessor) checkDateFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
+	rp.log.Debug().Str("field.Type().String()", field.Type().String()).Msg("Checking date filter")
+
 	if field.Type().String() != "*fhir.Date" {
 		return &FilterResult{Passed: false, Message: "field is not a date"}, nil
 	}

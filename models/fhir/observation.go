@@ -37,7 +37,7 @@ type Observation struct {
 	Subject              *Reference                  `bson:"subject,omitempty" json:"subject,omitempty"`
 	Focus                []Reference                 `bson:"focus,omitempty" json:"focus,omitempty"`
 	Encounter            *Reference                  `bson:"encounter,omitempty" json:"encounter,omitempty"`
-	EffectiveDateTime    *string                     `bson:"effectiveDateTime,omitempty" json:"effectiveDateTime,omitempty"`
+	EffectiveDateTime    *Date                     `bson:"effectiveDateTime,omitempty" json:"effectiveDateTime,omitempty"`
 	EffectivePeriod      *Period                     `bson:"effectivePeriod,omitempty" json:"effectivePeriod,omitempty"`
 	EffectiveTiming      *Timing                     `bson:"effectiveTiming,omitempty" json:"effectiveTiming,omitempty"`
 	EffectiveInstant     *string                     `bson:"effectiveInstant,omitempty" json:"effectiveInstant,omitempty"`

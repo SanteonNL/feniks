@@ -22,7 +22,7 @@ func main() {
 	}
 	defer db.Close()
 
-	query, err := GetQueryFromFile("queries/hix/flat/patient_index.sql")
+	query, err := GetQueryFromFile("queries\\hix\\flat\\patient_index.sql")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to read query from file")
 	}
@@ -30,12 +30,12 @@ func main() {
 	dataSource := NewSQLDataSource(db, query, "Patient", log)
 	// Setup search parameters
 	searchParams := SearchParameterMap{
-		// "Patient.birthDate": {
-		// 	Code:       "birthdate",
-		// 	Type:       "date",
-		// 	Value:      "1990-01-01",
-		// 	Comparator: "ge",
-		// },
+		"Patient.birthdate": {
+			Code:       "birthdate",
+			Type:       "date",
+			Value:      "1990-01-01",
+			Comparator: "le",
+		},
 	}
 
 	// Process resources

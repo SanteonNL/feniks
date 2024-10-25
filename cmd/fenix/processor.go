@@ -88,7 +88,7 @@ func (rp *ResourceProcessor) populateResourceStruct(value reflect.Value, result 
 
 // determinePopulateType handles different field types
 func (rp *ResourceProcessor) determinePopulateType(structPath string, value reflect.Value, parentID string, result ResourceResult) (*FilterResult, error) {
-	log.Debug().Str("structPath", structPath).Str("value.Kind()", value.Kind().String()).Msg("Determining populate type")
+	rp.log.Debug().Str("structPath", structPath).Str("value.Kind()", value.Kind().String()).Msg("Determining populate type")
 
 	rows, exists := result[structPath]
 	if !exists {
@@ -120,12 +120,12 @@ func (rp *ResourceProcessor) populateSlice(structPath string, value reflect.Valu
 			valueElement := reflect.New(value.Type().Elem()).Elem()
 
 			// Populate the element and check filters
-			structResult, err := rp.populateStructAndNestedFields(structPath, valueElement, row, result)
+			structFilterResult, err := rp.populateStructAndNestedFields(structPath, valueElement, row, result)
 			if err != nil {
 				return nil, err
 			}
 
-			if structResult.Passed {
+			if structFilterResult.Passed {
 				anyPassed = true
 				filteredSlice = reflect.Append(filteredSlice, valueElement)
 			}
@@ -271,13 +271,12 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 		}, nil
 	}
 
-	rp.log.Debug().Str("structPath", structPath).Msg("All fields populated successfully")
+	// rp.log.Debug().Str("structPath", structPath).Msg("All fields populated successfully")
 	return &FilterResult{Passed: true}, nil
 }
 
 // Part 2: Field Setting and Type Conversion
 func (rp *ResourceProcessor) setField(structPath string, structPtr interface{}, fieldName string, value interface{}) error {
-	rp.log.Debug().Str("structPath", structPath).Str("fieldName", fieldName).Interface("value", value).Msg("Setting field")
 
 	structValue := reflect.ValueOf(structPtr)
 	if structValue.Kind() != reflect.Ptr || structValue.IsNil() {
@@ -303,6 +302,8 @@ func (rp *ResourceProcessor) setField(structPath string, structPtr interface{}, 
 		field = field.Elem() // Dereference for further processing
 	}
 
+	rp.log.Debug().Str("structPath", structPath).Str("fieldName", fieldName).Str("fieldType", field.Type().String()).Interface("value", value).Msg("Setting field")
+
 	// Now check for special types after potentially dereferencing
 	switch field.Type().String() {
 	case "fhir.Date":
@@ -313,6 +314,7 @@ func (rp *ResourceProcessor) setField(structPath string, structPtr interface{}, 
 
 	// Check if type implements UnmarshalJSON
 	if unmarshaler, ok := field.Addr().Interface().(json.Unmarshaler); ok {
+		rp.log.Debug().Str("field", field.Type().String()).Msg("Setting field with UnmarshalJSON")
 		var jsonBytes []byte
 		var err error
 
@@ -338,6 +340,7 @@ func (rp *ResourceProcessor) setField(structPath string, structPtr interface{}, 
 }
 
 func (rp *ResourceProcessor) setDateField(field reflect.Value, value interface{}) error {
+	rp.log.Debug().Str("field", field.Type().String()).Msg("Setting date field")
 	// Ensure we can take the address of the field
 	if !field.CanAddr() {
 		return fmt.Errorf("cannot take address of date field")
@@ -415,77 +418,6 @@ func (rp *ResourceProcessor) setBasicField(field reflect.Value, value interface{
 	default:
 		return fmt.Errorf("unsupported field type: %v", field.Kind())
 	}
-	return nil
-}
-
-func (rp *ResourceProcessor) setPointerField(field reflect.Value, value interface{}) error {
-	rp.log.Debug().
-		Str("fieldType", field.Type().String()).
-		Interface("value", value).
-		Msg("Setting pointer field")
-
-	// Initialize if nil
-	if field.IsNil() {
-		field.Set(reflect.New(field.Type().Elem()))
-	}
-
-	// First check if the type implements UnmarshalJSON
-	if unmarshaler, ok := field.Interface().(json.Unmarshaler); ok {
-		// Convert the value to JSON bytes
-		var jsonBytes []byte
-		var err error
-
-		switch v := value.(type) {
-		case string:
-			// Wrap string values in quotes
-			jsonBytes = []byte(`"` + v + `"`)
-		case []byte:
-			jsonBytes = v
-		default:
-			// For other types, use json.Marshal
-			if jsonBytes, err = json.Marshal(value); err != nil {
-				return fmt.Errorf("failed to marshal value: %w", err)
-			}
-		}
-
-		rp.log.Debug().
-			Str("fieldType", field.Type().String()).
-			Str("jsonValue", string(jsonBytes)).
-			Msg("Unmarshaling JSON value")
-
-		if err := unmarshaler.UnmarshalJSON(jsonBytes); err != nil {
-			return fmt.Errorf("failed to unmarshal value for type %s: %w", field.Type().String(), err)
-		}
-		return nil
-	}
-
-	// Fall back to basic type handling for pointers that don't implement UnmarshalJSON
-	switch field.Type().Elem().Kind() {
-	case reflect.String:
-		strVal := fmt.Sprint(value)
-		field.Elem().SetString(strVal)
-	case reflect.Bool:
-		boolVal, err := strconv.ParseBool(fmt.Sprint(value))
-		if err != nil {
-			return err
-		}
-		field.Elem().SetBool(boolVal)
-	case reflect.Int, reflect.Int64:
-		intVal, err := strconv.ParseInt(fmt.Sprint(value), 10, 64)
-		if err != nil {
-			return err
-		}
-		field.Elem().SetInt(intVal)
-	case reflect.Float64:
-		floatVal, err := strconv.ParseFloat(fmt.Sprint(value), 64)
-		if err != nil {
-			return err
-		}
-		field.Elem().SetFloat(floatVal)
-	default:
-		return fmt.Errorf("unsupported pointer type: %v", field.Type())
-	}
-
 	return nil
 }
 
