@@ -140,7 +140,12 @@ func main() {
 		"Patient.birthdate": SearchParameter{
 			Code:  "birthdate",
 			Type:  "date",
-			Value: "1992-01-0ads1",
+			Value: "ge1991-01-01",
+		},
+		"Patient.identifier": SearchParameter{
+			Code:  "birthdate",
+			Type:  "identifier",
+			Value: "22221s",
 		},
 	}
 
