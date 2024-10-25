@@ -233,7 +233,7 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 		for i := 0; i < structType.NumField(); i++ {
 			fieldName := structType.Field(i).Name
 			if strings.EqualFold(fieldName, key) {
-				rp.log.Debug().Str("structPath", structPath).Str("fieldName", fieldName).Interface("value", value).Msg("Setting field")
+				//rp.log.Debug().Str("structPath", structPath).Str("fieldName", fieldName).Interface("value", value).Msg("Setting field")
 				if err := rp.setField(structPath, structPtr, fieldName, value); err != nil {
 					rp.log.Error().Err(err).Str("structPath", structPath).Str("fieldName", fieldName).Msg("Failed to set field")
 					return nil, err
