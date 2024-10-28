@@ -30,11 +30,10 @@ func main() {
 	dataSource := NewSQLDataSource(db, query, "Patient", log)
 	// Setup search parameters
 	searchParams := SearchParameterMap{
-		"Patient.birthdate": {
-			Code:       "birthdate",
-			Type:       "date",
-			Value:      "1990-01-01",
-			Comparator: "le",
+		"Patient.identifier": {
+			Code:  "identifier",
+			Type:  "token",
+			Value: "22221s",
 		},
 	}
 

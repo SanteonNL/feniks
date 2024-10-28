@@ -9,7 +9,6 @@ import (
 
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type SearchParameterMap map[string]SearchParameter
@@ -55,7 +54,7 @@ func ProcessResources(ds *DataSource, patientID string, searchParams SearchParam
 
 	// Process each resource result
 	for _, result := range results {
-		log.Debug().Interface("result %v", result).Msg("Processing resource result")
+		log.Debug().Interface("result", result).Msg("Processing resource result")
 		// Create new resource instance
 		resource, err := CreateResource(ds.resourceType)
 		if err != nil {
@@ -67,11 +66,13 @@ func ProcessResources(ds *DataSource, patientID string, searchParams SearchParam
 		// Populate and filter the resource
 		filterResult, err := processor.populateResourceStruct(resourceValue, result)
 		if err != nil {
-			// Log error but continue with other resources
+			log.Error().Err(err).Msg("Error processing resource")
 			continue
 		}
 
+		// Skip the entire resource if any filter failed
 		if !filterResult.Passed {
+			log.Debug().Str("resourceType", ds.resourceType).Msg("Resource filtered out")
 			continue
 		}
 
@@ -110,53 +111,93 @@ func (rp *ResourceProcessor) determinePopulateType(structPath string, value refl
 	}
 }
 
-// Keeping your current slice logic which is important for filtering
+// Update populateSlice to properly handle filter failures
 func (rp *ResourceProcessor) populateSlice(structPath string, value reflect.Value, parentID string, rows []RowData, result ResourceResult) (*FilterResult, error) {
-	filteredSlice := reflect.MakeSlice(value.Type(), 0, len(rows))
-	anyPassed := false
+	rp.log.Debug().
+		Str("structPath", structPath).
+		Msg("Populating slice")
+
+	// Check if there's a filter for this slice path
+	if param, exists := rp.searchParams[structPath]; exists {
+		rp.log.Debug().
+			Str("structPath", structPath).
+			Interface("param", param).
+			Msg("Found filter for slice")
+	}
+
+	tempSlice := reflect.MakeSlice(value.Type(), 0, len(rows))
+	anyElementPassed := false
 
 	for _, row := range rows {
 		if row.ParentID == parentID || row.ParentID == "" {
 			valueElement := reflect.New(value.Type().Elem()).Elem()
 
-			// Populate the element and check filters
-			structFilterResult, err := rp.populateStructAndNestedFields(structPath, valueElement, row, result)
+			filterResult, err := rp.populateStructAndNestedFields(structPath, valueElement, row, result)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("error populating slice element: %w", err)
 			}
 
-			if structFilterResult.Passed {
-				anyPassed = true
-				filteredSlice = reflect.Append(filteredSlice, valueElement)
+			elementPassed := filterResult.Passed
+			if elementPassed {
+				if _, exists := rp.searchParams[structPath]; exists {
+					elementFilterResult, err := rp.checkFilter(structPath, valueElement)
+					if err != nil {
+						return nil, fmt.Errorf("error checking filter for slice element: %w", err)
+					}
+					elementPassed = elementFilterResult.Passed
+				}
+			}
+
+			if elementPassed {
+				anyElementPassed = true
+				tempSlice = reflect.Append(tempSlice, valueElement)
 			}
 		}
 	}
 
-	// If any element passed, keep all elements
-	if anyPassed {
-		value.Set(filteredSlice)
-		return &FilterResult{Passed: true}, nil
+	if !anyElementPassed {
+		return &FilterResult{
+			Passed:  false,
+			Message: fmt.Sprintf("No elements in slice at %s passed filters", structPath),
+		}, nil
 	}
 
+	value.Set(tempSlice)
 	return &FilterResult{
-		Passed:  false,
-		Message: fmt.Sprintf("No elements in slice passed filters at %s", structPath),
+		Passed:  true,
+		Message: fmt.Sprintf("One or more elements in slice at %s passed filters", structPath),
 	}, nil
 }
 
 // populateStruct handles populating struct fields including nested structures
+// Update populateStruct to properly handle filter failures
 func (rp *ResourceProcessor) populateStruct(path string, value reflect.Value, parentID string, rows []RowData, result ResourceResult) (*FilterResult, error) {
+	// First check if there's a filter for this struct level
+	rp.log.Debug().Str("path", path).Msg("Checking struct level filter")
+
+	if filterResult, err := rp.checkFilter(path, value); err != nil {
+		return nil, fmt.Errorf("failed to check struct filter at %s: %w", path, err)
+	} else if !filterResult.Passed {
+		rp.log.Debug().Str("path", path).Msg("Struct level filter did not pass")
+		return filterResult, nil
+	}
+
+	// Track if we populated any fields
+	anyFieldsPopulated := false
+	var lastFilterResult *FilterResult
+
 	// Process each row that matches the parent ID
 	for _, row := range rows {
 		if row.ParentID == parentID || parentID == "" {
-			log.Debug().Str("path", path).Str("row.ID", row.ID).Msg("Processing struct")
+			rp.log.Debug().Str("path", path).Str("row.ID", row.ID).Msg("Processing struct")
+
 			// First populate direct fields
 			filterResult, err := rp.populateStructFields(path, value.Addr().Interface(), row)
 			if err != nil {
 				return nil, fmt.Errorf("failed to populate struct fields at %s: %w", path, err)
 			}
 
-			// If direct fields were filtered out, stop processing
+			// If direct fields were filtered out, stop processing this row
 			if !filterResult.Passed {
 				return filterResult, nil
 			}
@@ -167,18 +208,24 @@ func (rp *ResourceProcessor) populateStruct(path string, value reflect.Value, pa
 				return nil, err
 			}
 
-			// Return immediately if nested fields pass
-			if nestedResult.Passed {
+			// If nested fields were filtered out, stop processing this row
+			if !nestedResult.Passed {
 				return nestedResult, nil
 			}
+
+			anyFieldsPopulated = true
+			lastFilterResult = nestedResult
 		}
 	}
 
-	// If we get here and haven't found any matching rows, still consider it a pass
-	return &FilterResult{
-		Passed:  true,
-		Message: fmt.Sprintf("No matching rows for struct at %s", path),
-	}, nil
+	if !anyFieldsPopulated {
+		return &FilterResult{
+			Passed:  true,
+			Message: fmt.Sprintf("No matching rows for struct at %s", path),
+		}, nil
+	}
+
+	return lastFilterResult, nil
 }
 
 // Part 1: Struct and Nested Fields
@@ -239,7 +286,7 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 					return nil, err
 				}
 				fieldsPopulated = true
-
+				rp.log.Debug().Str("structPath", structPath).Str("fieldName", fieldName).Interface("value", value).Msg("Setting field in populateStructFields")
 				// Check field filter
 				fieldPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
 				if filterResult, err := rp.checkFilter(fieldPath, structValue.Field(i)); err != nil {
