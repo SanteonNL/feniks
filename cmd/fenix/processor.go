@@ -111,61 +111,66 @@ func (rp *ResourceProcessor) determinePopulateType(structPath string, value refl
 	}
 }
 
-// Update populateSlice to properly handle filter failures
 func (rp *ResourceProcessor) populateSlice(structPath string, value reflect.Value, parentID string, rows []RowData, result ResourceResult) (*FilterResult, error) {
 	rp.log.Debug().
 		Str("structPath", structPath).
 		Msg("Populating slice")
 
+	// Create slice to hold all elements
+	allElements := reflect.MakeSlice(value.Type(), 0, len(rows))
+	anyElementPassed := false
+
 	// Check if there's a filter for this slice path
-	if param, exists := rp.searchParams[structPath]; exists {
+	hasFilter := false
+	if _, exists := rp.searchParams[structPath]; exists {
+		hasFilter = true
 		rp.log.Debug().
 			Str("structPath", structPath).
-			Interface("param", param).
 			Msg("Found filter for slice")
 	}
-
-	tempSlice := reflect.MakeSlice(value.Type(), 0, len(rows))
-	anyElementPassed := false
 
 	for _, row := range rows {
 		if row.ParentID == parentID || row.ParentID == "" {
 			valueElement := reflect.New(value.Type().Elem()).Elem()
 
+			// Populate the element
 			filterResult, err := rp.populateStructAndNestedFields(structPath, valueElement, row, result)
 			if err != nil {
 				return nil, fmt.Errorf("error populating slice element: %w", err)
 			}
 
-			elementPassed := filterResult.Passed
-			if elementPassed {
-				if _, exists := rp.searchParams[structPath]; exists {
-					elementFilterResult, err := rp.checkFilter(structPath, valueElement)
-					if err != nil {
-						return nil, fmt.Errorf("error checking filter for slice element: %w", err)
-					}
-					elementPassed = elementFilterResult.Passed
+			// If this path has a filter, check if any element passes
+			if hasFilter && filterResult.Passed {
+				elementFilterResult, err := rp.checkFilter(structPath, valueElement)
+				if err != nil {
+					return nil, fmt.Errorf("error checking filter for slice element: %w", err)
 				}
+				if elementFilterResult.Passed {
+					anyElementPassed = true
+				}
+			} else if !hasFilter {
+				// If no filter exists, consider it passed
+				anyElementPassed = true
 			}
 
-			if elementPassed {
-				anyElementPassed = true
-				tempSlice = reflect.Append(tempSlice, valueElement)
-			}
+			// Always add element to the slice
+			allElements = reflect.Append(allElements, valueElement)
 		}
 	}
 
-	if !anyElementPassed {
+	// If we have a filter and no elements passed, return filter failure
+	if hasFilter && !anyElementPassed {
 		return &FilterResult{
 			Passed:  false,
 			Message: fmt.Sprintf("No elements in slice at %s passed filters", structPath),
 		}, nil
 	}
 
-	value.Set(tempSlice)
+	// Set the complete slice with all elements
+	value.Set(allElements)
 	return &FilterResult{
 		Passed:  true,
-		Message: fmt.Sprintf("One or more elements in slice at %s passed filters", structPath),
+		Message: fmt.Sprintf("Slice at %s processed successfully", structPath),
 	}, nil
 }
 

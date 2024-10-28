@@ -20,7 +20,9 @@ SELECT
     '0650989181' AS "telecom[0].value",
     --'official' AS "identifier[0].use",
     'http://fhir.nl/fhir/NamingSystem/bsn' AS "identifier[0].system",
-    '22221s' AS "identifier[0].value"
+    '22221s' AS "identifier[0].value",
+    'http://fhir.nl/fhir/NamingSystem/bsn' AS "identifier[1].system",
+    '1s' AS "identifier[1].value"
 FROM
     patient
 -- WHERE identificatienummer = :Patient.id

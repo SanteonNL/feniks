@@ -20,8 +20,8 @@ identificatienummer as "Patient.id",
     'http://unitsofmeasure.org' AS "valuequantity.system",
     'mg/dL' AS "valuequantity.unit",
    -- '<' AS "valuequantity.comparator",
-    'Patient/' || identificatienummer AS "subject.reference",
-    metingdatumtijd AS "effectiveDateTime"
+    'Patient/' || identificatienummer AS "subject.reference"
+    --metingdatumtijd AS "effectiveDateTime"
 FROM 
     observation_raw
 --WHERE identificatienummer = :Patient.id
