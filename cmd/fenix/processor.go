@@ -330,32 +330,34 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 					fieldsPopulated = true
 				}
 			}
+
+			// After setting all codings, check filter at the parent level (category)
+			parentPath := structPath // e.g., Observation.category
+			if filterResult, err := rp.checkFilter(parentPath, structValue); err != nil {
+				return nil, err
+			} else if !filterResult.Passed {
+				rp.log.Debug().
+					Str("fieldPath", parentPath).
+					Msg("Field did not pass filter")
+				return filterResult, nil
+			}
 		}
 	}
 
-	// Then process regular fields that haven't been handled as part of a Coding
+	// Then process regular fields
 	for key, value := range row.Data {
-		// Skip if this field was already processed as part of a Coding
 		if processedFields[key] {
-			rp.log.Debug().
-				Str("key", key).
-				Msg("Skipping already processed field")
 			continue
 		}
 
 		for i := 0; i < structType.NumField(); i++ {
 			fieldName := structType.Field(i).Name
-			//Skip if the field was marked as processed during Coding handling
 			if processedFields[fieldName] {
 				continue
 			}
 
 			if strings.EqualFold(fieldName, key) {
 				if err := rp.setField(structPath, structPtr, fieldName, value); err != nil {
-					rp.log.Error().Err(err).
-						Str("structPath", structPath).
-						Str("fieldName", fieldName).
-						Msg("Failed to set field")
 					return nil, err
 				}
 				fieldsPopulated = true
@@ -363,21 +365,15 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 				// Check field filter
 				fieldPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
 				if filterResult, err := rp.checkFilter(fieldPath, structValue.Field(i)); err != nil {
-					rp.log.Error().Err(err).
-						Str("fieldPath", fieldPath).
-						Msg("Failed to check filter")
 					return nil, err
 				} else if !filterResult.Passed {
-					rp.log.Debug().
-						Str("fieldPath", fieldPath).
-						Msg("Field did not pass filter")
 					return filterResult, nil
 				}
 			}
 		}
 	}
 
-	// Handle ID field if not already processed
+	// Handle ID field
 	if idField := structValue.FieldByName("Id"); idField.IsValid() && idField.CanSet() && !processedFields["Id"] {
 		if err := rp.setField(structPath, structPtr, "Id", row.ID); err != nil {
 			return nil, err
@@ -394,7 +390,6 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 
 	return &FilterResult{Passed: true}, nil
 }
-
 func (rp *ResourceProcessor) setCodingFromRow(structPath string, field reflect.Value, fieldName string, row RowData, processedFields map[string]bool) error {
 	rp.log.Debug().
 		Str("structPath", structPath).
