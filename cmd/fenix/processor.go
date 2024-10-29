@@ -616,7 +616,7 @@ func (rp *ResourceProcessor) setCodingFromRow(structPath string, field reflect.V
 	// Create the Coding
 	coding := fhir.Coding{
 		Code:    stringPtr(code),
-		Display: stringPtr(display),
+		Display: stringPtr("mapped system"),
 		System:  stringPtr(system),
 	}
 

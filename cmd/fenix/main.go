@@ -44,7 +44,7 @@ func main() {
 		"Observation.code": {
 			Code:  "code",
 			Type:  "token",
-			Value: "tykjy",
+			Value: "tyy",
 		},
 		"Observation.category": {
 			Code:  "category",
