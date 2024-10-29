@@ -276,13 +276,13 @@ func (rp *ResourceProcessor) populateNestedFields(parentPath string, parentValue
 		fieldName := parentValue.Type().Field(i).Name
 		fieldPath := fmt.Sprintf("%s.%s", parentPath, strings.ToLower(fieldName))
 
-		// // Skip if we've already processed this path
-		// if rp.processedPaths[fieldPath] {
-		// 	rp.log.Debug().
-		// 		Str("fieldPath", fieldPath).
-		// 		Msg("Skipping already processed nested field")
-		// 	continue
-		// }
+		// Skip if we've already processed this path
+		if rp.processedPaths[fieldPath] {
+			rp.log.Debug().
+				Str("fieldPath", fieldPath).
+				Msg("Skipping already processed nested field")
+			continue
+		}
 
 		if hasDataForPath(result, fieldPath) {
 			rp.processedPaths[fieldPath] = true
@@ -299,69 +299,39 @@ func (rp *ResourceProcessor) populateNestedFields(parentPath string, parentValue
 	return &FilterResult{Passed: true}, nil
 }
 
+// Modified populateStructFields to handle multiple coding rows
 func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr interface{}, row RowData, result ResourceResult) (*FilterResult, error) {
 	structValue := reflect.ValueOf(structPtr).Elem()
 	structType := structValue.Type()
-
 	fieldsPopulated := false
 	processedFields := make(map[string]bool)
 
-	// // First process all Coding fields
-	// for i := 0; i < structType.NumField(); i++ {
-	// 	field := structValue.Field(i)
-	// 	fieldType := field.Type().String()
-	// 	fieldName := structType.Field(i).Name
+	// First process all Coding fields
+	for i := 0; i < structType.NumField(); i++ {
+		field := structValue.Field(i)
+		fieldType := field.Type().String()
+		fieldName := structType.Field(i).Name
 
-	// 	if strings.HasSuffix(fieldType, "Coding") || strings.HasSuffix(fieldType, "[]Coding") {
-	// 		codingPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
+		if strings.HasSuffix(fieldType, "Coding") || strings.HasSuffix(fieldType, "[]Coding") {
+			codingPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
+			rp.processedPaths[codingPath] = true
 
-	// 		// Mark this path as processed
-	// 		rp.processedPaths[codingPath] = true
+			codingRows, exists := result[codingPath]
+			if !exists {
+				continue
+			}
 
-	// 		// Get the rows for this specific coding path
-	// 		codingRows, exists := result[codingPath]
-	// 		if !exists {
-	// 			rp.log.Debug().
-	// 				Str("codingPath", codingPath).
-	// 				Msg("No data found for coding path")
-	// 			continue
-	// 		}
-
-	// 		// Find the matching coding row using the parent ID
-	// 		var codingRow RowData
-	// 		for _, r := range codingRows {
-	// 			if r.ParentID == row.ID {
-	// 				codingRow = r
-	// 				break
-	// 			}
-	// 		}
-
-	// 		if codingRow.ID == "" {
-	// 			rp.log.Debug().
-	// 				Str("codingPath", codingPath).
-	// 				Str("parentID", row.ID).
-	// 				Msg("No matching coding row found")
-	// 			continue
-	// 		}
-
-	// 		// Mark all coding-related fields as processed
-	// 		for key := range codingRow.Data {
-	// 			keyLower := strings.ToLower(key)
-	// 			if strings.HasSuffix(keyLower, "code") ||
-	// 				strings.HasSuffix(keyLower, "display") ||
-	// 				strings.HasSuffix(keyLower, "system") {
-	// 				processedFields[key] = true
-	// 				// Also mark the original field name as processed
-	// 				processedFields[fieldName] = true
-	// 			}
-	// 		}
-
-	// 		if err := rp.setCodingFromRow(codingPath, field, fieldName, codingRow, processedFields); err != nil {
-	// 			return nil, err
-	// 		}
-	// 		fieldsPopulated = true
-	// 	}
-	// }
+			// Process all matching coding rows for this field
+			for _, codingRow := range codingRows {
+				if codingRow.ParentID == row.ID {
+					if err := rp.setCodingFromRow(codingPath, field, fieldName, codingRow, processedFields); err != nil {
+						return nil, err
+					}
+					fieldsPopulated = true
+				}
+			}
+		}
+	}
 
 	// Then process regular fields that haven't been handled as part of a Coding
 	for key, value := range row.Data {
@@ -375,10 +345,10 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 
 		for i := 0; i < structType.NumField(); i++ {
 			fieldName := structType.Field(i).Name
-			// Skip if the field was marked as processed during Coding handling
-			// if processedFields[fieldName] {
-			// 	continue
-			// }
+			//Skip if the field was marked as processed during Coding handling
+			if processedFields[fieldName] {
+				continue
+			}
 
 			if strings.EqualFold(fieldName, key) {
 				if err := rp.setField(structPath, structPtr, fieldName, value); err != nil {
@@ -432,124 +402,80 @@ func (rp *ResourceProcessor) setCodingFromRow(structPath string, field reflect.V
 		Interface("rowData", row.Data).
 		Msg("Starting Coding field processing")
 
-	// Extract code, display, and system values from the row data
 	var code, display, system string
 
-	// Look for fields in row data
+	// Extract coding fields
 	for key, value := range row.Data {
 		keyLower := strings.ToLower(key)
 		strValue := fmt.Sprint(value)
-
-		rp.log.Trace().
-			Str("key", key).
-			Str("keyLower", keyLower).
-			Str("value", strValue).
-			Msg("Checking row data field")
 
 		switch {
 		case strings.HasSuffix(keyLower, "code"):
 			code = strValue
 			processedFields[key] = true
-			rp.log.Debug().
-				Str("field", key).
-				Str("code", code).
-				Msg("Found code field")
 		case strings.HasSuffix(keyLower, "display"):
 			display = strValue
 			processedFields[key] = true
-			rp.log.Debug().
-				Str("field", key).
-				Str("display", display).
-				Msg("Found display field")
 		case strings.HasSuffix(keyLower, "system"):
 			system = strValue
 			processedFields[key] = true
-			rp.log.Debug().
-				Str("field", key).
-				Str("system", system).
-				Msg("Found system field")
 		}
 	}
 
-	// Log the collected values before mapping
-	rp.log.Debug().
-		Str("structPath", structPath).
-		Str("fieldName", fieldName).
-		Str("originalCode", code).
-		Str("originalDisplay", display).
-		Str("originalSystem", system).
-		Msg("Collected values before concept mapping")
-
-	// If we found a code, try to map it
-	if code != "" {
-		mappedCode, mappedDisplay, err := "mappedCode", "mappedDisplay", error(nil)
-		if err != nil {
-			rp.log.Warn().
-				Err(err).
-				Str("structPath", structPath).
-				Str("originalCode", code).
-				Msg("Concept mapping failed, using original values")
-		} else {
-			rp.log.Info().
-				Str("originalCode", code).
-				Str("mappedCode", mappedCode).
-				Str("originalDisplay", display).
-				Str("mappedDisplay", mappedDisplay).
-				Msg("Successfully mapped concept")
-
-			code = mappedCode
-			if mappedDisplay != "" {
-				display = mappedDisplay
-			}
-		}
-
-		// Create the Coding
-		coding := fhir.Coding{
-			Code:    &code,
-			Display: nil,
-			System:  nil,
-		}
-
-		if display != "" {
-			coding.Display = &display
-			rp.log.Debug().
-				Str("display", display).
-				Msg("Setting display in Coding")
-		}
-		if system != "" {
-			coding.System = &system
-			rp.log.Debug().
-				Str("system", system).
-				Msg("Setting system in Coding")
-		}
-
-		// Check if the field is a slice
-		if field.Kind() == reflect.Slice {
-			// Create a new slice with one element
-			newSlice := reflect.MakeSlice(field.Type(), 0, 1)
-			newSlice = reflect.Append(newSlice, reflect.ValueOf(coding))
-			field.Set(newSlice)
-		} else {
-			// If it's not a slice, it should be a single Coding field
-			field.Set(reflect.ValueOf(coding))
-		}
-
-		rp.log.Debug().
-			Str("code", code).
-			Str("display", display).
-			Str("system", system).
-			Msg("Set Coding field")
-	} else {
+	if code == "" {
 		rp.log.Debug().
 			Str("structPath", structPath).
 			Str("fieldName", fieldName).
 			Msg("No code found in row data")
+		return nil
 	}
 
-	// Log processed fields
+	// Create the Coding
+	coding := fhir.Coding{
+		Code:    &code,
+		Display: stringPtr("ik ben gemapt"),
+		System:  stringPtr(system),
+	}
+
+	// Handle slice vs single coding field
+	if field.Kind() == reflect.Slice {
+		// For slices, append to existing or create new
+		var newSlice reflect.Value
+		if field.IsNil() {
+			// Create new slice if nil
+			newSlice = reflect.MakeSlice(field.Type(), 0, 1)
+		} else {
+			// Use existing slice
+			newSlice = field
+		}
+
+		// Check if this coding already exists in the slice
+		exists := false
+		for i := 0; i < newSlice.Len(); i++ {
+			existing := newSlice.Index(i).Interface().(fhir.Coding)
+			if (existing.Code != nil && *existing.Code == code) &&
+				(existing.System != nil && *existing.System == system) {
+				exists = true
+				break
+			}
+		}
+
+		// Only append if it doesn't exist
+		if !exists {
+			newSlice = reflect.Append(newSlice, reflect.ValueOf(coding))
+			field.Set(newSlice)
+		}
+	} else {
+		// Single coding field
+		field.Set(reflect.ValueOf(coding))
+	}
+
 	rp.log.Debug().
-		Interface("processedFields", processedFields).
-		Msg("Fields marked as processed")
+		Str("code", code).
+		Str("display", display).
+		Str("system", system).
+		Bool("isSlice", field.Kind() == reflect.Slice).
+		Msg("Set Coding field")
 
 	return nil
 }
