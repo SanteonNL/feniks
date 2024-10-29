@@ -41,25 +41,30 @@ func (rp *ResourceProcessor) checkFilter(path string, field reflect.Value) (*Fil
 }
 
 func (rp *ResourceProcessor) checkDateFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
-	rp.log.Debug().Str("field.Type().String()", field.Type().String()).Msg("Checking date filter")
+	rp.log.Debug().
+		Str("fieldType", field.Type().String()).
+		Msg("Checking date filter")
 
-	if field.Type().String() != "*fhir.Date" {
+	if field.Type().String() != "fhir.Date" {
+		rp.log.Debug().Msg("Field is not a date")
 		return &FilterResult{Passed: false, Message: "field is not a date"}, nil
 	}
 
-	dateVal := field.Interface().(*fhir.Date)
-	if dateVal == nil {
-		return &FilterResult{Passed: false}, nil
-	}
-
+	dateVal := field.Interface().(fhir.Date)
 	filterDate, err := time.Parse("2006-01-02", param.Value)
 	if err != nil {
+		rp.log.Error().Err(err).Msg("Error parsing filter date")
 		return nil, err
 	}
 
 	fieldDate := dateVal.Time()
-	passed := false
+	rp.log.Debug().
+		Str("fieldDate", fieldDate.String()).
+		Str("filterDate", filterDate.String()).
+		Str("comparator", param.Comparator).
+		Msg("Comparing dates")
 
+	passed := false
 	switch param.Comparator {
 	case "eq", "":
 		passed = fieldDate.Equal(filterDate)
@@ -73,6 +78,7 @@ func (rp *ResourceProcessor) checkDateFilter(field reflect.Value, param SearchPa
 		passed = !fieldDate.After(filterDate)
 	}
 
+	rp.log.Debug().Bool("passed", passed).Msg("Date filter result")
 	return &FilterResult{Passed: passed}, nil
 }
 
@@ -113,48 +119,66 @@ func (rp *ResourceProcessor) checkTokenFilter(field reflect.Value, param SearchP
 		Str("code", code).
 		Msg("Checking token filter")
 
-	// Handle category (slice of CodeableConcept)
-	if field.Type().String() == "[]fhir.CodeableConcept" {
-		for i := 0; i < field.Len(); i++ {
-			category := field.Index(i)
-			codings := category.FieldByName("Coding")
-			if !codings.IsValid() {
-				continue
-			}
+	// Handle slice types first
+	if field.Kind() == reflect.Slice {
+		return rp.checkSliceToken(field, system, code)
+	}
 
-			// Check each coding in this category
-			for j := 0; j < codings.Len(); j++ {
-				coding := codings.Index(j)
-				if rp.matchesCoding(coding, system, code) {
-					return &FilterResult{Passed: true}, nil
-				}
-			}
-		}
+	// Handle non-slice types
+	return rp.checkSingleToken(field, system, code)
+}
+func (rp *ResourceProcessor) checkSliceToken(slice reflect.Value, system, code string) (*FilterResult, error) {
+	// Empty slice never matches
+	if slice.Len() == 0 {
 		return &FilterResult{Passed: false}, nil
 	}
 
-	// Handle single CodeableConcept
-	if field.Type().String() == "fhir.CodeableConcept" {
+	// Check each element in the slice
+	for i := 0; i < slice.Len(); i++ {
+		element := slice.Index(i)
+		if result, err := rp.checkSingleToken(element, system, code); err != nil {
+			return nil, err
+		} else if result.Passed {
+			return &FilterResult{Passed: true}, nil
+		}
+	}
+
+	return &FilterResult{Passed: false}, nil
+}
+
+func (rp *ResourceProcessor) checkSingleToken(field reflect.Value, system, code string) (*FilterResult, error) {
+	// Get the field type, handling pointers
+	fieldType := field.Type().String()
+	if strings.HasPrefix(fieldType, "*") {
+		if field.IsNil() {
+			return &FilterResult{Passed: false}, nil
+		}
+		field = field.Elem()
+		fieldType = field.Type().String()
+	}
+
+	switch fieldType {
+	case "fhir.CodeableConcept":
 		codings := field.FieldByName("Coding")
 		if !codings.IsValid() {
 			return &FilterResult{Passed: false}, nil
 		}
+		// Recursively check the slice of codings
+		return rp.checkSliceToken(codings, system, code)
 
-		for i := 0; i < codings.Len(); i++ {
-			coding := codings.Index(i)
-			if rp.matchesCoding(coding, system, code) {
-				return &FilterResult{Passed: true}, nil
-			}
+	case "fhir.Coding":
+		return &FilterResult{Passed: rp.matchesCoding(field, system, code)}, nil
+
+	case "fhir.Identifier":
+		return rp.checkIdentifierFilter(field, system, code)
+
+	default:
+		// Handle simple string comparison
+		if field.Kind() == reflect.String {
+			return &FilterResult{Passed: field.String() == code}, nil
 		}
 		return &FilterResult{Passed: false}, nil
 	}
-
-	// Handle direct Coding type
-	if field.Type().String() == "fhir.Coding" {
-		return &FilterResult{Passed: rp.matchesCoding(field, system, code)}, nil
-	}
-
-	return &FilterResult{Passed: false}, nil
 }
 
 func (rp *ResourceProcessor) matchesCoding(coding reflect.Value, system, code string) bool {

@@ -22,18 +22,24 @@ func main() {
 	}
 	defer db.Close()
 
-	query, err := GetQueryFromFile("queries\\hix\\flat\\Observation_hix_metingen_metingen.sql")
+	query, err := GetQueryFromFile("queries\\hix\\flat\\Patient.sql")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to read query from file")
 	}
 
-	dataSource := NewSQLDataSource(db, query, "Observation", log)
+	dataSource := NewSQLDataSource(db, query, "Patient", log)
 	// Setup search parameters
 	searchParams := SearchParameterMap{
-		"Observation.category": {
+		"Patient.identifier": {
 			Code:  "category",
 			Type:  "token",
-			Value: "tommy",
+			Value: "1sas",
+		},
+		"Patient.birthdate": {
+			Code:       "birthdate",
+			Type:       "date",
+			Comparator: "eq",
+			Value:      "1992-01-01",
 		},
 	}
 
