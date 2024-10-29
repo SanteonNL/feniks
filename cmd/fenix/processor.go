@@ -25,11 +25,13 @@ type SearchParameter struct {
 type ProcessedPaths map[string]bool
 
 // Modify ResourceProcessor to track processed paths
+// Modify ResourceProcessor to include the result map
 type ResourceProcessor struct {
 	resourceType   string
 	searchParams   SearchParameterMap
 	log            zerolog.Logger
-	processedPaths ProcessedPaths // Add this field
+	processedPaths ProcessedPaths
+	result         map[string][]RowData // Add this field
 }
 
 type FilterResult struct {
@@ -37,16 +39,19 @@ type FilterResult struct {
 	Message string
 }
 
-func NewResourceProcessor(resourceType string, searchParams SearchParameterMap, log zerolog.Logger) *ResourceProcessor {
+// Update NewResourceProcessor
+func NewResourceProcessor(resourceType string, searchParams SearchParameterMap, log zerolog.Logger, result map[string][]RowData) *ResourceProcessor {
 	return &ResourceProcessor{
 		resourceType:   resourceType,
 		searchParams:   searchParams,
 		log:            log,
-		processedPaths: make(ProcessedPaths), // Initialize the map
+		processedPaths: make(ProcessedPaths),
+		result:         result,
 	}
 }
+
+// Update ProcessResources to pass the result map
 func ProcessResources(ds *DataSource, patientID string, searchParams SearchParameterMap, log zerolog.Logger) ([]interface{}, error) {
-	// Read all resources
 	results, err := ds.ReadResources(patientID)
 	if err != nil {
 		return nil, fmt.Errorf("error reading data: %w", err)
@@ -54,19 +59,11 @@ func ProcessResources(ds *DataSource, patientID string, searchParams SearchParam
 
 	log.Info().Msgf("Number of results found: %d", len(results))
 
-	processor := NewResourceProcessor(ds.resourceType, searchParams, log)
 	var processedResources []interface{}
 
-	outputDir := "output/temp"
-	if err := WriteToJSON(results, "raw_results", outputDir, log); err != nil {
-		log.Error().Err(err).Msg("Failed to write raw results")
-		// Continue processing despite write error
-	}
-
-	// Process each resource result
 	for _, result := range results {
-		log.Debug().Interface("result", result).Msg("Processing resource result")
-		// Create new resource instance
+		processor := NewResourceProcessor(ds.resourceType, searchParams, log, result)
+
 		resource, err := CreateResource(ds.resourceType)
 		if err != nil {
 			return nil, fmt.Errorf("error creating resource: %w", err)
@@ -74,14 +71,12 @@ func ProcessResources(ds *DataSource, patientID string, searchParams SearchParam
 
 		resourceValue := reflect.ValueOf(resource).Elem()
 
-		// Populate and filter the resource
 		filterResult, err := processor.populateResourceStruct(resourceValue, result)
 		if err != nil {
 			log.Error().Err(err).Msg("Error processing resource")
 			continue
 		}
 
-		// Skip the entire resource if any filter failed
 		if !filterResult.Passed {
 			log.Debug().Str("resourceType", ds.resourceType).Msg("Resource filtered out")
 			continue
@@ -299,20 +294,27 @@ func (rp *ResourceProcessor) populateNestedFields(parentPath string, parentValue
 	return &FilterResult{Passed: true}, nil
 }
 
-// Modified populateStructFields to handle multiple coding rows
 func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr interface{}, row RowData, result ResourceResult) (*FilterResult, error) {
 	structValue := reflect.ValueOf(structPtr).Elem()
 	structType := structValue.Type()
-	fieldsPopulated := false
 	processedFields := make(map[string]bool)
 
-	// First process all Coding fields
+	// First process all Coding and CodeableConcept fields
 	for i := 0; i < structType.NumField(); i++ {
 		field := structValue.Field(i)
 		fieldType := field.Type().String()
 		fieldName := structType.Field(i).Name
+		rp.log.Debug().
+			Str("fieldType", fieldType).
+			Str("fieldName", fieldName).
+			Msg("Checking field type")
 
-		if strings.HasSuffix(fieldType, "Coding") || strings.HasSuffix(fieldType, "[]Coding") {
+		// Handle both direct Coding fields and CodeableConcept fields
+		if strings.HasSuffix(fieldType, "Coding") ||
+			strings.HasSuffix(fieldType, "[]Coding") ||
+			strings.HasSuffix(fieldType, "CodeableConcept") ||
+			strings.HasSuffix(fieldType, "[]CodeableConcept") {
+
 			codingPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
 			rp.processedPaths[codingPath] = true
 
@@ -321,25 +323,39 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 				continue
 			}
 
-			// Process all matching coding rows for this field
-			for _, codingRow := range codingRows {
-				if codingRow.ParentID == row.ID {
-					if err := rp.setCodingFromRow(codingPath, field, fieldName, codingRow, processedFields); err != nil {
-						return nil, err
+			// Handle CodeableConcept (single or slice)
+			if strings.Contains(fieldType, "CodeableConcept") {
+				if err := rp.setCodeableConceptField(field, codingPath, fieldName, row.ID, codingRows, processedFields); err != nil {
+					// Check if this field has a filter
+					if _, hasFilter := rp.searchParams[codingPath]; hasFilter {
+						return &FilterResult{
+							Passed:  false,
+							Message: fmt.Sprintf("Filter failed for %s: %v", codingPath, err),
+						}, nil
 					}
-					fieldsPopulated = true
+					// If no filter, continue processing other fields
+					rp.log.Debug().Err(err).Str("path", codingPath).Msg("Error processing CodeableConcept field")
+					continue
 				}
-			}
+			} else {
+				// Handle regular Coding fields
+				for _, codingRow := range codingRows {
+					if codingRow.ParentID == row.ID {
+						if err := rp.setCodingFromRow(codingPath, field, fieldName, codingRow, processedFields); err != nil {
+							return nil, err
+						}
+					}
+				}
 
-			// After setting all codings, check filter at the parent level (category)
-			parentPath := structPath // e.g., Observation.category
-			if filterResult, err := rp.checkFilter(parentPath, structValue); err != nil {
-				return nil, err
-			} else if !filterResult.Passed {
-				rp.log.Debug().
-					Str("fieldPath", parentPath).
-					Msg("Field did not pass filter")
-				return filterResult, nil
+				// After setting all codings, check filter at the parent level
+				if filterResult, err := rp.checkFilter(structPath, structValue); err != nil {
+					return nil, err
+				} else if !filterResult.Passed {
+					rp.log.Debug().
+						Str("fieldPath", structPath).
+						Msg("Field did not pass filter")
+					return filterResult, nil
+				}
 			}
 		}
 	}
@@ -358,38 +374,210 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 
 			if strings.EqualFold(fieldName, key) {
 				if err := rp.setField(structPath, structPtr, fieldName, value); err != nil {
-					return nil, err
+					return nil, fmt.Errorf("failed to set field %s: %w", fieldName, err)
 				}
-				fieldsPopulated = true
 
 				// Check field filter
 				fieldPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
 				if filterResult, err := rp.checkFilter(fieldPath, structValue.Field(i)); err != nil {
-					return nil, err
+					return nil, fmt.Errorf("failed to check filter for field %s: %w", fieldName, err)
 				} else if !filterResult.Passed {
+					rp.log.Debug().
+						Str("fieldPath", fieldPath).
+						Msg("Field did not pass filter")
 					return filterResult, nil
+				}
+
+				processedFields[fieldName] = true
+				break
+			}
+		}
+	}
+
+	// Handle ID field if not already processed
+	if idField := structValue.FieldByName("Id"); idField.IsValid() && idField.CanSet() && !processedFields["Id"] {
+		if err := rp.setField(structPath, structPtr, "Id", row.ID); err != nil {
+			return nil, fmt.Errorf("failed to set Id field: %w", err)
+		}
+	}
+
+	return &FilterResult{Passed: true}, nil
+}
+
+// Modified setCodeableConceptField to better handle row relationships
+// Modified setCodeableConceptField to handle filtering
+func (rp *ResourceProcessor) setCodeableConceptField(field reflect.Value, path string, fieldName string, parentID string, rows []RowData, processedFields map[string]bool) error {
+	rp.log.Debug().
+		Str("path", path).
+		Str("fieldName", fieldName).
+		Str("parentID", parentID).
+		Int("rowCount", len(rows)).
+		Msg("Setting CodeableConcept field")
+
+	isSlice := field.Kind() == reflect.Slice
+
+	if isSlice {
+		// Handle slice of CodeableConcepts
+		if field.IsNil() {
+			field.Set(reflect.MakeSlice(field.Type(), 0, len(rows)))
+		}
+
+		// Group rows by their parent CodeableConcept
+		conceptRows := make(map[string][]RowData)
+		for _, row := range rows {
+			if row.ParentID == parentID {
+				conceptRows[row.ID] = append(conceptRows[row.ID], row)
+			}
+		}
+
+		// Track if any element passes the filter
+		anyElementPassed := false
+		hasFilter := false
+		if _, exists := rp.searchParams[path]; exists {
+			hasFilter = true
+		}
+
+		// Create a CodeableConcept for each group
+		for conceptID, conceptGroup := range conceptRows {
+			rp.log.Debug().
+				Str("conceptID", conceptID).
+				Int("groupSize", len(conceptGroup)).
+				Msg("Processing CodeableConcept group")
+
+			newConcept := reflect.New(field.Type().Elem()).Elem()
+			if err := rp.populateCodeableConcept(newConcept, path, conceptGroup[0], processedFields); err != nil {
+				return err
+			}
+
+			// Check filter for this concept if there is one
+			if hasFilter {
+				filterResult, err := rp.checkFilter(path, newConcept)
+				if err != nil {
+					return err
+				}
+				if filterResult.Passed {
+					anyElementPassed = true
+				}
+			}
+
+			// Always add to slice, we'll check filter result later
+			field.Set(reflect.Append(field, newConcept))
+		}
+
+		// If we have a filter and nothing passed, return error
+		if hasFilter && !anyElementPassed {
+			rp.log.Debug().
+				Str("path", path).
+				Msg("No CodeableConcepts passed filter")
+			return fmt.Errorf("no matching CodeableConcepts found")
+		}
+	} else {
+		// Handle single CodeableConcept
+		if field.Kind() == reflect.Ptr {
+			if field.IsNil() {
+				field.Set(reflect.New(field.Type().Elem()))
+			}
+			field = field.Elem()
+		}
+
+		// Find the main CodeableConcept row
+		var conceptRow RowData
+		for _, row := range rows {
+			if row.ParentID == parentID {
+				conceptRow = row
+				break
+			}
+		}
+
+		if conceptRow.ID != "" {
+			if err := rp.populateCodeableConcept(field, path, conceptRow, processedFields); err != nil {
+				return err
+			}
+
+			// Check filter after population
+			if _, exists := rp.searchParams[path]; exists {
+				filterResult, err := rp.checkFilter(path, field)
+				if err != nil {
+					return err
+				}
+				if !filterResult.Passed {
+					rp.log.Debug().
+						Str("path", path).
+						Msg("CodeableConcept did not pass filter")
+					return fmt.Errorf("CodeableConcept did not match filter criteria")
 				}
 			}
 		}
 	}
 
-	// Handle ID field
-	if idField := structValue.FieldByName("Id"); idField.IsValid() && idField.CanSet() && !processedFields["Id"] {
-		if err := rp.setField(structPath, structPtr, "Id", row.ID); err != nil {
-			return nil, err
-		}
-		fieldsPopulated = true
-	}
-
-	if !fieldsPopulated {
-		return &FilterResult{
-			Passed:  true,
-			Message: fmt.Sprintf("No fields populated for %s", structPath),
-		}, nil
-	}
-
-	return &FilterResult{Passed: true}, nil
+	return nil
 }
+
+// Modified populateCodeableConcept to better handle Coding population
+// Modified populateCodeableConcept to correctly find coding rows
+func (rp *ResourceProcessor) populateCodeableConcept(conceptValue reflect.Value, path string, row RowData, processedFields map[string]bool) error {
+	rp.log.Debug().
+		Str("path", path).
+		Str("rowID", row.ID).
+		Interface("rowData", row.Data).
+		Msg("Populating CodeableConcept")
+
+	// Get the Coding field
+	codingField := conceptValue.FieldByName("Coding")
+	if !codingField.IsValid() {
+		return fmt.Errorf("invalid Coding field in CodeableConcept")
+	}
+
+	// Initialize Coding slice
+	if codingField.Kind() == reflect.Slice && codingField.IsNil() {
+		codingField.Set(reflect.MakeSlice(codingField.Type(), 0, 1))
+	}
+
+	// Look up coding rows using the correct path
+	codingPath := fmt.Sprintf("%s.coding", path)
+	codingRows, exists := rp.result[codingPath]
+
+	rp.log.Debug().
+		Str("codingPath", codingPath).
+		Bool("exists", exists).
+		Int("rowCount", len(codingRows)).
+		Msg("Looking up coding rows")
+
+	if exists {
+		// Process all coding rows that belong to this CodeableConcept
+		for _, codingRow := range codingRows {
+			if codingRow.ParentID == row.ID {
+				rp.log.Debug().
+					Str("codingRowID", codingRow.ID).
+					Str("parentID", row.ID).
+					Interface("codingData", codingRow.Data).
+					Msg("Processing coding row")
+
+				if err := rp.setCodingFromRow(codingPath, codingField, "Coding", codingRow, processedFields); err != nil {
+					return fmt.Errorf("failed to set coding: %w", err)
+				}
+			}
+		}
+	}
+
+	// Process text field if present
+	if textValue, exists := row.Data["text"]; exists {
+		textField := conceptValue.FieldByName("Text")
+		if textField.IsValid() && textField.CanSet() && textField.Kind() == reflect.Ptr {
+			if textField.IsNil() {
+				textField.Set(reflect.New(textField.Type().Elem()))
+			}
+			textField.Elem().SetString(fmt.Sprint(textValue))
+			rp.log.Debug().
+				Str("text", fmt.Sprint(textValue)).
+				Msg("Set text field")
+		}
+	}
+
+	return nil
+}
+
+// Modified setCodingFromRow to add more debug logging
 func (rp *ResourceProcessor) setCodingFromRow(structPath string, field reflect.Value, fieldName string, row RowData, processedFields map[string]bool) error {
 	rp.log.Debug().
 		Str("structPath", structPath).
@@ -408,69 +596,65 @@ func (rp *ResourceProcessor) setCodingFromRow(structPath string, field reflect.V
 		case strings.HasSuffix(keyLower, "code"):
 			code = strValue
 			processedFields[key] = true
+			rp.log.Debug().Str("code", code).Msg("Found code")
 		case strings.HasSuffix(keyLower, "display"):
 			display = strValue
 			processedFields[key] = true
+			rp.log.Debug().Str("display", display).Msg("Found display")
 		case strings.HasSuffix(keyLower, "system"):
 			system = strValue
 			processedFields[key] = true
+			rp.log.Debug().Str("system", system).Msg("Found system")
 		}
 	}
 
-	if code == "" {
-		rp.log.Debug().
-			Str("structPath", structPath).
-			Str("fieldName", fieldName).
-			Msg("No code found in row data")
+	if code == "" && system == "" {
+		rp.log.Debug().Msg("No code or system found in row data")
 		return nil
 	}
 
 	// Create the Coding
 	coding := fhir.Coding{
-		Code:    &code,
-		Display: stringPtr("ik ben gemapt"),
+		Code:    stringPtr(code),
+		Display: stringPtr(display),
 		System:  stringPtr(system),
 	}
 
 	// Handle slice vs single coding field
 	if field.Kind() == reflect.Slice {
-		// For slices, append to existing or create new
 		var newSlice reflect.Value
 		if field.IsNil() {
-			// Create new slice if nil
 			newSlice = reflect.MakeSlice(field.Type(), 0, 1)
 		} else {
-			// Use existing slice
 			newSlice = field
 		}
 
-		// Check if this coding already exists in the slice
+		// Check for duplicates
 		exists := false
 		for i := 0; i < newSlice.Len(); i++ {
 			existing := newSlice.Index(i).Interface().(fhir.Coding)
-			if (existing.Code != nil && *existing.Code == code) &&
-				(existing.System != nil && *existing.System == system) {
+			if (existing.Code != nil && coding.Code != nil && *existing.Code == *coding.Code) &&
+				(existing.System != nil && coding.System != nil && *existing.System == *coding.System) {
 				exists = true
 				break
 			}
 		}
 
-		// Only append if it doesn't exist
 		if !exists {
 			newSlice = reflect.Append(newSlice, reflect.ValueOf(coding))
 			field.Set(newSlice)
+			rp.log.Debug().
+				Str("code", code).
+				Str("system", system).
+				Msg("Added new coding to slice")
 		}
 	} else {
-		// Single coding field
 		field.Set(reflect.ValueOf(coding))
+		rp.log.Debug().
+			Str("code", code).
+			Str("system", system).
+			Msg("Set single coding field")
 	}
-
-	rp.log.Debug().
-		Str("code", code).
-		Str("display", display).
-		Str("system", system).
-		Bool("isSlice", field.Kind() == reflect.Slice).
-		Msg("Set Coding field")
 
 	return nil
 }
