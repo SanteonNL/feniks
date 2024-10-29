@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/SanteonNL/fenix/models/fhir"
@@ -140,6 +141,7 @@ func (ds *DataSource) processNestedField(parts []string, value interface{}, id, 
 	currentID := id
 	currentParentID := parentID
 
+	// Build the full path and handle IDs for each level
 	for i := 0; i < len(parts)-1; i++ {
 		part := parts[i]
 		index := ds.extractIndex(part)
@@ -147,9 +149,24 @@ func (ds *DataSource) processNestedField(parts []string, value interface{}, id, 
 
 		currentPath += "." + cleanPart
 
-		// Update ID for indexed elements
-		if index != "0" {
-			currentID += "_" + index
+		// For arrays, create a unique ID using the base ID and all indices up to this point
+		if index != 0 {
+			// For category[1], the ID should be "2"
+			// For category[1].coding[0], the ID should be "2_1"
+			if i == 0 {
+				// First level array (e.g., category[1]) - use index + 1 as ID
+				currentID = fmt.Sprintf("%d", index+1)
+			} else {
+				// Nested array (e.g., coding[0]) - append to parent ID
+				currentID = fmt.Sprintf("%s_%d", currentParentID, index+1)
+			}
+		} else {
+			// For index 0
+			if i == 0 {
+				currentID = "1"
+			} else {
+				currentID = fmt.Sprintf("%s_1", currentParentID)
+			}
 		}
 
 		isLeaf := i >= len(parts)-2
@@ -172,8 +189,10 @@ func (ds *DataSource) processNestedField(parts []string, value interface{}, id, 
 			// Process leaf node
 			leafField := parts[len(parts)-1]
 			if existingIndex != -1 {
+				// Update existing entry
 				resources[resourceID][currentPath][existingIndex].Data[leafField] = value
 			} else {
+				// Create new entry
 				resources[resourceID][currentPath] = append(resources[resourceID][currentPath], RowData{
 					ID:       currentID,
 					ParentID: currentParentID,
@@ -184,10 +203,11 @@ func (ds *DataSource) processNestedField(parts []string, value interface{}, id, 
 		} else {
 			// Process intermediate node
 			if existingIndex == -1 {
+				// Create new intermediate node
 				resources[resourceID][currentPath] = append(resources[resourceID][currentPath], RowData{
 					ID:       currentID,
 					ParentID: currentParentID,
-					Data:     map[string]interface{}{"id": id},
+					Data:     make(map[string]interface{}),
 				})
 			}
 		}
@@ -197,13 +217,17 @@ func (ds *DataSource) processNestedField(parts []string, value interface{}, id, 
 	}
 }
 
-func (ds *DataSource) extractIndex(part string) string {
+// Helper function to convert string index to int
+func (ds *DataSource) extractIndex(part string) int {
 	start := strings.Index(part, "[")
 	end := strings.Index(part, "]")
 	if start != -1 && end != -1 && start < end {
-		return part[start+1 : end]
+		index, err := strconv.Atoi(part[start+1 : end])
+		if err == nil {
+			return index
+		}
 	}
-	return "0"
+	return 0
 }
 
 func (ds *DataSource) removeIndex(part string) string {

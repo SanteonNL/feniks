@@ -57,6 +57,12 @@ func ProcessResources(ds *DataSource, patientID string, searchParams SearchParam
 	processor := NewResourceProcessor(ds.resourceType, searchParams, log)
 	var processedResources []interface{}
 
+	outputDir := "output/temp"
+	if err := WriteToJSON(results, "raw_results", outputDir, log); err != nil {
+		log.Error().Err(err).Msg("Failed to write raw results")
+		// Continue processing despite write error
+	}
+
 	// Process each resource result
 	for _, result := range results {
 		log.Debug().Interface("result", result).Msg("Processing resource result")
@@ -270,13 +276,13 @@ func (rp *ResourceProcessor) populateNestedFields(parentPath string, parentValue
 		fieldName := parentValue.Type().Field(i).Name
 		fieldPath := fmt.Sprintf("%s.%s", parentPath, strings.ToLower(fieldName))
 
-		// Skip if we've already processed this path
-		if rp.processedPaths[fieldPath] {
-			rp.log.Debug().
-				Str("fieldPath", fieldPath).
-				Msg("Skipping already processed nested field")
-			continue
-		}
+		// // Skip if we've already processed this path
+		// if rp.processedPaths[fieldPath] {
+		// 	rp.log.Debug().
+		// 		Str("fieldPath", fieldPath).
+		// 		Msg("Skipping already processed nested field")
+		// 	continue
+		// }
 
 		if hasDataForPath(result, fieldPath) {
 			rp.processedPaths[fieldPath] = true
@@ -300,62 +306,62 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 	fieldsPopulated := false
 	processedFields := make(map[string]bool)
 
-	// First process all Coding fields
-	for i := 0; i < structType.NumField(); i++ {
-		field := structValue.Field(i)
-		fieldType := field.Type().String()
-		fieldName := structType.Field(i).Name
+	// // First process all Coding fields
+	// for i := 0; i < structType.NumField(); i++ {
+	// 	field := structValue.Field(i)
+	// 	fieldType := field.Type().String()
+	// 	fieldName := structType.Field(i).Name
 
-		if strings.HasSuffix(fieldType, "Coding") || strings.HasSuffix(fieldType, "[]Coding") {
-			codingPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
+	// 	if strings.HasSuffix(fieldType, "Coding") || strings.HasSuffix(fieldType, "[]Coding") {
+	// 		codingPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
 
-			// Mark this path as processed
-			rp.processedPaths[codingPath] = true
+	// 		// Mark this path as processed
+	// 		rp.processedPaths[codingPath] = true
 
-			// Get the rows for this specific coding path
-			codingRows, exists := result[codingPath]
-			if !exists {
-				rp.log.Debug().
-					Str("codingPath", codingPath).
-					Msg("No data found for coding path")
-				continue
-			}
+	// 		// Get the rows for this specific coding path
+	// 		codingRows, exists := result[codingPath]
+	// 		if !exists {
+	// 			rp.log.Debug().
+	// 				Str("codingPath", codingPath).
+	// 				Msg("No data found for coding path")
+	// 			continue
+	// 		}
 
-			// Find the matching coding row using the parent ID
-			var codingRow RowData
-			for _, r := range codingRows {
-				if r.ParentID == row.ID {
-					codingRow = r
-					break
-				}
-			}
+	// 		// Find the matching coding row using the parent ID
+	// 		var codingRow RowData
+	// 		for _, r := range codingRows {
+	// 			if r.ParentID == row.ID {
+	// 				codingRow = r
+	// 				break
+	// 			}
+	// 		}
 
-			if codingRow.ID == "" {
-				rp.log.Debug().
-					Str("codingPath", codingPath).
-					Str("parentID", row.ID).
-					Msg("No matching coding row found")
-				continue
-			}
+	// 		if codingRow.ID == "" {
+	// 			rp.log.Debug().
+	// 				Str("codingPath", codingPath).
+	// 				Str("parentID", row.ID).
+	// 				Msg("No matching coding row found")
+	// 			continue
+	// 		}
 
-			// Mark all coding-related fields as processed
-			for key := range codingRow.Data {
-				keyLower := strings.ToLower(key)
-				if strings.HasSuffix(keyLower, "code") ||
-					strings.HasSuffix(keyLower, "display") ||
-					strings.HasSuffix(keyLower, "system") {
-					processedFields[key] = true
-					// Also mark the original field name as processed
-					processedFields[fieldName] = true
-				}
-			}
+	// 		// Mark all coding-related fields as processed
+	// 		for key := range codingRow.Data {
+	// 			keyLower := strings.ToLower(key)
+	// 			if strings.HasSuffix(keyLower, "code") ||
+	// 				strings.HasSuffix(keyLower, "display") ||
+	// 				strings.HasSuffix(keyLower, "system") {
+	// 				processedFields[key] = true
+	// 				// Also mark the original field name as processed
+	// 				processedFields[fieldName] = true
+	// 			}
+	// 		}
 
-			if err := rp.setCodingFromRow(codingPath, field, fieldName, codingRow, processedFields); err != nil {
-				return nil, err
-			}
-			fieldsPopulated = true
-		}
-	}
+	// 		if err := rp.setCodingFromRow(codingPath, field, fieldName, codingRow, processedFields); err != nil {
+	// 			return nil, err
+	// 		}
+	// 		fieldsPopulated = true
+	// 	}
+	// }
 
 	// Then process regular fields that haven't been handled as part of a Coding
 	for key, value := range row.Data {
@@ -370,9 +376,9 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 		for i := 0; i < structType.NumField(); i++ {
 			fieldName := structType.Field(i).Name
 			// Skip if the field was marked as processed during Coding handling
-			if processedFields[fieldName] {
-				continue
-			}
+			// if processedFields[fieldName] {
+			// 	continue
+			// }
 
 			if strings.EqualFold(fieldName, key) {
 				if err := rp.setField(structPath, structPtr, fieldName, value); err != nil {

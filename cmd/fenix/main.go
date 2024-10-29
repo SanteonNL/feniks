@@ -50,6 +50,12 @@ func main() {
 		}
 	}
 
+	outputDir := "output/temp"
+	if err := WriteToJSON(resources, "resources", outputDir, log); err != nil {
+		log.Error().Err(err).Msg("Failed to write raw results")
+		// Continue processing despite write error
+	}
+
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
 	log.Debug().Msgf("Execution time: %s", duration)
