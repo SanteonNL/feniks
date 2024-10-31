@@ -53,7 +53,7 @@ func getConceptMapForFhirPath(fhirPath string, log zerolog.Logger) (fhir.Concept
 	return *conceptMap, nil
 }
 
-func TranslateCode(conceptMap fhir.ConceptMap, sourceCode *string, log zerolog.Logger) (*string, *string, error) {
+func TranslateCode(conceptMap fhir.ConceptMap, sourceCode *string, typeIsCode bool, log zerolog.Logger) (*string, *string, error) {
 	log.Debug().Msgf("sourceCode: %v", *sourceCode)
 	for _, group := range conceptMap.Group {
 		log.Debug().Msgf("Group.Source: %v", *group.Source)
@@ -67,6 +67,19 @@ func TranslateCode(conceptMap fhir.ConceptMap, sourceCode *string, log zerolog.L
 				}
 			}
 		}
+		log.Debug().Msgf("Code not found in ConceptMap")
+		if typeIsCode {
+			log.Debug().Msgf("Type is code, default mapping with *")
+			for _, element := range group.Element {
+				if *element.Code == "*" {
+					for _, target := range element.Target {
+						log.Debug().Msgf("Returning targetCode: %s, targetDisplay: %s", *target.Code, *target.Display)
+						return target.Code, target.Display, nil
+					}
+				}
+			}
+		}
+
 		//}
 	}
 	return nil, nil, fmt.Errorf("code not found in ConceptMap")
@@ -100,8 +113,9 @@ func LoadConceptMaps(log zerolog.Logger) error {
 // - For a code make sure always everything is mapped to the bound valueset, for coding also unmapped codes can
 // be correct
 // - What to do with system and display fields? (not yet implemented)
+// - Let cocneptmappingn for codes not in conceptmpa map to unknwon oid (or should this be done in conceptmap?)
 
-func performConceptMapping(fhirPath string, inputValue string, log zerolog.Logger) (string, string, error) {
+func performConceptMapping(fhirPath string, inputValue string, typeIsCode bool, log zerolog.Logger) (string, string, error) {
 	// Check if fhirPath is in FhirPathToValueset
 	_, exists := FhirPathToValueset[fhirPath]
 	if !exists {
@@ -122,7 +136,7 @@ func performConceptMapping(fhirPath string, inputValue string, log zerolog.Logge
 	log.Debug().Msgf("ConceptMap for FHIR Path %s: %v", fhirPath, *conceptMap.Id)
 
 	// Perform concept mapping using the ConceptMap
-	targetCode, targetDisplay, err := TranslateCode(conceptMap, &inputValue, log)
+	targetCode, targetDisplay, err := TranslateCode(conceptMap, &inputValue, typeIsCode, log)
 	if err != nil {
 		return "", "", fmt.Errorf("Failed to map concept code: %v", err)
 	}
@@ -153,7 +167,7 @@ func applyConceptMappingForStruct(structPath string, structType reflect.Type, st
 	fieldValueStr := getStringValue(fieldValue.Elem())
 
 	// Perform concept mapping using the shared function
-	mappedCode, _, err := performConceptMapping(fhirPath, fieldValueStr, log)
+	mappedCode, _, err := performConceptMapping(fhirPath, fieldValueStr, false, log)
 	if err != nil {
 		return err
 	}
@@ -181,7 +195,7 @@ func applyConceptMappingForField(structPath string, structFieldName string, inpu
 	log.Debug().Msgf("Converted inputValue to string: %s", stringInputValue)
 
 	// Perform concept mapping using the shared function
-	mappedCode, _, err := performConceptMapping(fhirPath, stringInputValue, log)
+	mappedCode, _, err := performConceptMapping(fhirPath, stringInputValue, true, log)
 	if err != nil {
 		return nil, err
 	}

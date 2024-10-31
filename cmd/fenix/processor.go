@@ -613,6 +613,8 @@ func (rp *ResourceProcessor) setCodingFromRow(structPath string, field reflect.V
 		return nil
 	}
 
+	// Conceptmapping for coding comes here
+
 	// Create the Coding
 	coding := fhir.Coding{
 		Code:    stringPtr(code),
@@ -709,6 +711,28 @@ func (rp *ResourceProcessor) setField(structPath string, structPtr interface{}, 
 		return rp.setDateField(field, value)
 	case "json.Number":
 		return rp.setJSONNumber(field, value)
+	}
+
+	// Cannot use field.Type as above because codes have different types, e.g. ObservationStatus has type ObservationStatus but
+	// for other resource it can be other types. So we need to check if the type has a Code() method
+	// equivalents in SetField function in
+	// https://github.com/SanteonNL/fenix/blob/feature/lw_add_conceptmapping_based_on_renamed_functions_before_rewrite_tommy/cmd/flatSqlToJson/main.go
+	//structFieldName := fieldName
+	//structValueElement := structElem
+	//structField := field
+	//inputValue := value
+
+	// Perform concept mapping for codes if applicable
+	structFieldType := field.Type()
+	if typeHasCodeMethod(structFieldType) { // Suggesting it is a code type
+		rp.log.Debug().Msgf("The type has a Code() method, likely indicating a 'code' type.")
+		// Call the concept mapping function
+		mappedValue, err := applyConceptMappingForField(structPath, fieldName, value, rp.log)
+		if err != nil {
+			return err
+		}
+		value = mappedValue
+		rp.log.Debug().Msgf("inputValue after concept mapping: %v", value)
 	}
 
 	// Check if type implements UnmarshalJSON
