@@ -157,6 +157,7 @@ func applyConceptMappingForStruct(structPath string, structType reflect.Type, st
 	if err != nil {
 		return err
 	}
+	log.Debug().Msgf("Mapped code: %s", mappedCode)
 
 	// Set the mapped code back to the struct's Code field
 	// TODO make working with current set functions, SetField does not exist anymore
