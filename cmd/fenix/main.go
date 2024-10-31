@@ -44,13 +44,13 @@ func main() {
 		"Observation.code": {
 			Code:  "code",
 			Type:  "token",
-			Value: "tyy",
+			Value: "https://decor.nictiz.nl/fhir/4.0/zib2020bbr-/ValueSet/2.16.840.1.113883.2.4.3.11.60.40.2.8.2.3--20200901000000?_format=json",
 		},
-		"Observation.category": {
-			Code:  "category",
-			Type:  "token",
-			Value: "tommy",
-		},
+		// "Observation.category": {
+		// 	Code:  "category",
+		// 	Type:  "token",
+		// 	Value: "tommy",
+		// },
 	}
 
 	// Process resources
