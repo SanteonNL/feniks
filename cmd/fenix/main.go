@@ -56,6 +56,30 @@ func main() {
 		},
 	}
 
+	// TODO: integrate with processing all json datasources
+	// Load StructureDefinitions
+	err = LoadStructureDefinitions(log)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load StructureDefinitions")
+	}
+
+	// Check if FhirPathToValueset is filled correctly
+	for fhirPath, valueset := range FhirPathToValueset {
+		log.Debug().Msgf("Path: %s, Valueset: %s\n", fhirPath, valueset)
+	}
+
+	// TODO: integrate with processing all json datasources
+	// Load ConceptMaps
+	err = LoadConceptMaps(log)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load ConceptMaps")
+	}
+
+	// Check if ValueSetToConceptMap is filled correctly
+	for valueset, conceptMap := range ValueSetToConceptMap {
+		log.Debug().Msgf("Valueset: %s, Conceptmap ID: %s\n", valueset, *conceptMap.Id)
+	}
+
 	// Process resources
 	resources, err := ProcessResources(dataSource, "12345", searchParams, log)
 	if err != nil {
