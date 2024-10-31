@@ -159,11 +159,12 @@ func applyConceptMappingForStruct(structPath string, structType reflect.Type, st
 	}
 
 	// Set the mapped code back to the struct's Code field
-	if fieldValue.IsValid() && fieldValue.CanSet() {
+	// TODO make working with current set functions, SetField does not exist anymore
+	/*if fieldValue.IsValid() && fieldValue.CanSet() {
 		if err := SetField(structPath, structPointer, "Code", mappedCode, log); err != nil {
 			return err
 		}
-	}
+	}*/
 
 	return nil
 }
