@@ -21,8 +21,10 @@ SELECT
     --'official' AS "identifier[0].use",
     'http://fhir.nl/fhir/NamingSystem/bsn' AS "identifier[0].system",
     '22221s' AS "identifier[0].value",
+    'usual' AS "identifier[0].use",
     'http://fhir.nl/fhir/NamingSystem/bsn' AS "identifier[1].system",
-    '1s' AS "identifier[1].value"
+    '1s' AS "identifier[1].value",
+    'F' AS "contact.gender"
 FROM
     patient
 -- WHERE identificatienummer = :Patient.id
