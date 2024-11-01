@@ -22,15 +22,15 @@ func main() {
 	}
 	defer db.Close()
 
-	//query, err := GetQueryFromFile("queries\\hix\\flat\\Observation_hix_metingen_metingen.sql")
-	query, err := GetQueryFromFile("queries\\hix\\flat\\patient.sql")
+	query, err := GetQueryFromFile("queries\\hix\\flat\\Observation_hix_metingen_metingen.sql")
+	//query, err := GetQueryFromFile("queries\\hix\\flat\\patient.sql")
 
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to read query from file")
 	}
 
-	//dataSource := NewSQLDataSource(db, query, "Observation", log)
-	dataSource := NewSQLDataSource(db, query, "Patient", log)
+	dataSource := NewSQLDataSource(db, query, "Observation", log)
+	//dataSource := NewSQLDataSource(db, query, "Patient", log)
 	// Setup search parameters
 	searchParams := SearchParameterMap{
 		// "Patient.identifier": {
