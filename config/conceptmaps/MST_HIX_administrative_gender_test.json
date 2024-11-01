@@ -57,6 +57,17 @@
                     ]
                 },
                 {
+                    "code": "*",
+                    "display": "*",
+                    "target": [
+                        {
+                            "code": "unknown",
+                            "display": "Unknown",
+                            "equivalence": "equal"
+                        }
+                    ]
+                },
+                {
                     "code": "UNK",
                     "display": "Unknown",
                     "target": [
