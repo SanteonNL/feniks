@@ -2,10 +2,11 @@ package main
 
 import (
 	"reflect"
-	"regexp"
 	"strings"
 	"unicode"
 )
+
+// TODO: cleanup functionst that are not used anymore
 
 // Function to determine the relevant FHIRPath for Coding and Quantity types
 func getValueSetBindingPath(fhirPath string, fhirType string) string {
@@ -82,62 +83,10 @@ func capitalizeFirstLetter(s string) string {
 	return string(runes)
 }
 
-// RegeneratePath filters valuesetbindingPath by keeping only elements
-// found in fieldTypeString, then capitalizes the first character of the final result.
-func RegeneratePath(valuesetbindingPath string, fieldTypeString string) string {
-	// Convert fieldTypeString to lowercase for case-insensitive comparison
-	lowerFieldTypeString := strings.ToLower(fieldTypeString)
-
-	// Split the valuesetbindingPath into elements
-	pathElements := strings.Split(valuesetbindingPath, ".")
-	var resultElements []string
-
-	// Iterate over each element, include it in the result if it's in fieldTypeString
-	for _, element := range pathElements {
-		lowerElement := strings.ToLower(element) // Make element lowercase for comparison
-		if strings.Contains(lowerFieldTypeString, lowerElement) {
-			resultElements = append(resultElements, element)
-		}
-	}
-
-	// Join the filtered elements with dots to form the new path
-	result := strings.Join(resultElements, ".")
-
-	// Capitalize only the first character of the final result string
-	if len(result) > 0 {
-		result = strings.ToUpper(result[:1]) + result[1:]
-	}
-
-	return result
-}
-
-// TransformFieldType takes a fieldType string like "fhir.AdministrativeGender"
-// and converts it to "Administrative.gender" by removing "fhir.", splitting
-// on capital letters, and formatting as required.
-func AlternativePath(fieldType string) string {
-	// Step 1: Remove "fhir." prefix if it exists
-	if strings.HasPrefix(fieldType, "fhir.") {
-		fieldType = strings.TrimPrefix(fieldType, "fhir.")
-	}
-
-	// Step 2: Split based on capitalized parts using regular expression
-	// This will match each word part that starts with an uppercase letter
-	re := regexp.MustCompile(`[A-Z][a-z]*`)
-	parts := re.FindAllString(fieldType, -1)
-
-	// Step 3: Format each part: first part keeps its case, others lowercase
-	for i := 1; i < len(parts); i++ {
-		parts[i] = strings.ToLower(parts[i])
-	}
-
-	// Step 4: Join parts with dots and return the result
-	return strings.Join(parts, ".")
-}
-
 // AlternativePathTwo takes structValue and fieldName as inputs,
 // removes "fhir." from structValue, and combines them
 // in the format "StructValue.fieldname" with proper casing.
-func AlternativePathTwo(structValue string, fieldName string) string {
+func AlternativePath(structValue string, fieldName string) string {
 	// Step 1: Remove "fhir." prefix if it exists
 	if strings.HasPrefix(structValue, "*fhir.") {
 		structValue = strings.TrimPrefix(structValue, "*fhir.")
