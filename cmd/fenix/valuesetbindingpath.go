@@ -92,17 +92,11 @@ func AlternativePath(structValue string, fieldName string) string {
 		structValue = strings.TrimPrefix(structValue, "*fhir.")
 	}
 
-	// Step 2: Format structValue to lowercase and split into parts
-	structParts := strings.Split(structValue, ".")
-	for i := 0; i < len(structParts); i++ {
-		structParts[i] = strings.ToLower(structParts[i])
-	}
-
 	// Step 3: Lowercase the fieldName
 	fieldName = strings.ToLower(fieldName)
 
 	// Step 4: Combine structParts and fieldName with a dot
-	combined := strings.Join(structParts, ".") + "." + fieldName
+	combined := structValue + "." + fieldName
 
 	// Step 5: Capitalize the first character of the result
 	if len(combined) > 0 {
