@@ -87,21 +87,11 @@ func capitalizeFirstLetter(s string) string {
 // removes "fhir." from structValue, and combines them
 // in the format "StructValue.fieldname" with proper casing.
 func AlternativePath(structValue string, fieldName string) string {
-	// Step 1: Remove "fhir." prefix if it exists
+
 	if strings.HasPrefix(structValue, "*fhir.") {
 		structValue = strings.TrimPrefix(structValue, "*fhir.")
 	}
-
-	// Step 3: Lowercase the fieldName
-	fieldName = strings.ToLower(fieldName)
-
-	// Step 4: Combine structParts and fieldName with a dot
 	combined := structValue + "." + fieldName
-
-	// Step 5: Capitalize the first character of the result
-	if len(combined) > 0 {
-		combined = strings.ToUpper(combined[:1]) + combined[1:]
-	}
 
 	return combined
 }
