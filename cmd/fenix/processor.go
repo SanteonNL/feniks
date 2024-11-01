@@ -9,6 +9,7 @@ import (
 
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type SearchParameterMap map[string]SearchParameter
@@ -310,6 +311,7 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 			Msg("Checking field type")
 
 		// Handle both direct Coding fields and CodeableConcept fields
+		// TODO add Quantity handling here also?
 		if strings.HasSuffix(fieldType, "Coding") ||
 			strings.HasSuffix(fieldType, "[]Coding") ||
 			strings.HasSuffix(fieldType, "CodeableConcept") ||
@@ -341,7 +343,7 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 				// Handle regular Coding fields
 				for _, codingRow := range codingRows {
 					if codingRow.ParentID == row.ID {
-						if err := rp.setCodingFromRow(codingPath, field, fieldName, codingRow, processedFields); err != nil {
+						if err := rp.setCodingFromRow("nog invullen", codingPath, field, fieldName, codingRow, processedFields); err != nil {
 							return nil, err
 						}
 					}
@@ -553,7 +555,7 @@ func (rp *ResourceProcessor) populateCodeableConcept(conceptValue reflect.Value,
 					Interface("codingData", codingRow.Data).
 					Msg("Processing coding row")
 
-				if err := rp.setCodingFromRow(codingPath, codingField, "Coding", codingRow, processedFields); err != nil {
+				if err := rp.setCodingFromRow(path, codingPath, codingField, "Coding", codingRow, processedFields); err != nil {
 					return fmt.Errorf("failed to set coding: %w", err)
 				}
 			}
@@ -578,7 +580,7 @@ func (rp *ResourceProcessor) populateCodeableConcept(conceptValue reflect.Value,
 }
 
 // Modified setCodingFromRow to add more debug logging
-func (rp *ResourceProcessor) setCodingFromRow(structPath string, field reflect.Value, fieldName string, row RowData, processedFields map[string]bool) error {
+func (rp *ResourceProcessor) setCodingFromRow(valuesetBindingPath string, structPath string, field reflect.Value, fieldName string, row RowData, processedFields map[string]bool) error {
 	rp.log.Debug().
 		Str("structPath", structPath).
 		Str("fieldName", fieldName).
@@ -613,14 +615,29 @@ func (rp *ResourceProcessor) setCodingFromRow(structPath string, field reflect.V
 		return nil
 	}
 
-	// Conceptmapping for coding comes here
-
 	// Create the Coding
 	coding := fhir.Coding{
 		Code:    stringPtr(code),
 		Display: stringPtr("mapped system"),
 		System:  stringPtr(system),
 	}
+
+	// Apply concept mapping for Coding (including CodeableConcept)
+	// TODO: Quantity handling
+
+	rp.log.Debug().Msgf("FHIR valuesetBindingPath to determine ValueSet: %s", valuesetBindingPath)
+
+	// TODO: instead of replacing the old coding add the new coding to the slice
+	// Perform concept mapping using the shared function
+	mappedCode, _, err := performConceptMapping(valuesetBindingPath, code, false, rp.log)
+	if err != nil {
+		return err
+	}
+	if mappedCode != "" {
+		log.Debug().Msgf("Mapped code: %s", mappedCode)
+		coding.Code = &mappedCode
+	}
+	rp.log.Debug().Msgf("coding.Code post-concept mapping attempt(unchanged if mapping failed) %v", *coding.Code)
 
 	// Handle slice vs single coding field
 	if field.Kind() == reflect.Slice {
@@ -713,6 +730,7 @@ func (rp *ResourceProcessor) setField(structPath string, structPtr interface{}, 
 		return rp.setJSONNumber(field, value)
 	}
 
+	// TODO: this can be removed but for now keep it for reference
 	// Cannot use field.Type as above because codes have different types, e.g. ObservationStatus has type ObservationStatus but
 	// for other resource it can be other types. So we need to check if the type has a Code() method
 	// equivalents in SetField function in
@@ -726,13 +744,16 @@ func (rp *ResourceProcessor) setField(structPath string, structPtr interface{}, 
 	structFieldType := field.Type()
 	if typeHasCodeMethod(structFieldType) { // Suggesting it is a code type
 		rp.log.Debug().Msgf("The type has a Code() method, likely indicating a 'code' type.")
-		// Call the concept mapping function
-		mappedValue, err := applyConceptMappingForField(structPath, fieldName, value, rp.log)
+		valuesetBindingPath, stringInputValue, err := prepareForConceptMappingCode(structValue, structPath, fieldName, value, rp.log)
 		if err != nil {
 			return err
 		}
-		value = mappedValue
-		rp.log.Debug().Msgf("inputValue after concept mapping: %v", value)
+		mappedCode, _, err := performConceptMapping(valuesetBindingPath, stringInputValue, true, rp.log)
+		if err != nil {
+			return err
+		}
+		value = mappedCode
+		rp.log.Debug().Msgf("value post-concept mapping attempt(unchanged if mapping failed) %v", value)
 	}
 
 	// Check if type implements UnmarshalJSON

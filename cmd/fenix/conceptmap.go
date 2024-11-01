@@ -37,12 +37,12 @@ var ValueSetToConceptMap = make(map[string]*fhir.ConceptMap)
 
 // Functie om ConceptMap op te halen voor een gegeven FHIRPath
 // This is the fhirPath that in structureDefinition is used to define the valueset, nl. element.binding.valueSet
-func getConceptMapForFhirPath(fhirPath string, log zerolog.Logger) (fhir.ConceptMap, error) {
-	valueSet, exists := FhirPathToValueset[fhirPath]
+func getConceptMapForFhirPath(valuesetBindingPath string, log zerolog.Logger) (fhir.ConceptMap, error) {
+	valueSet, exists := FhirPathToValueset[valuesetBindingPath]
 	if !exists {
-		return fhir.ConceptMap{}, fmt.Errorf("no valueset found voor FHIRPath: %s", fhirPath)
+		return fhir.ConceptMap{}, fmt.Errorf("no valueset found voor FHIR valuesetBindingPath: %s", valuesetBindingPath)
 	}
-	log.Debug().Msgf("valueSet for fhirPath %s: %s", fhirPath, valueSet)
+	log.Debug().Msgf("valueSet for FHIR valuesetBindingPath %s: %s", valuesetBindingPath, valueSet)
 
 	conceptMap, exists := ValueSetToConceptMap[valueSet]
 	if !exists {
@@ -53,6 +53,8 @@ func getConceptMapForFhirPath(fhirPath string, log zerolog.Logger) (fhir.Concept
 	return *conceptMap, nil
 }
 
+// TODO add something that makes the programme does not exit when default mappingn is lacking
+// and an unknown code is encountered (for coding this should be fine however)
 func TranslateCode(conceptMap fhir.ConceptMap, sourceCode *string, typeIsCode bool, log zerolog.Logger) (*string, *string, error) {
 	log.Debug().Msgf("sourceCode: %v", *sourceCode)
 	for _, group := range conceptMap.Group {
@@ -67,9 +69,13 @@ func TranslateCode(conceptMap fhir.ConceptMap, sourceCode *string, typeIsCode bo
 				}
 			}
 		}
-		log.Debug().Msgf("Code not found in ConceptMap")
-		if typeIsCode {
-			log.Debug().Msgf("Type is code, default mapping with *")
+	}
+	log.Debug().Msgf("Code not found in ConceptMap")
+	if typeIsCode {
+		log.Debug().Msgf("Type is code, default mapping with *")
+		for _, group := range conceptMap.Group {
+			log.Debug().Msgf("Group.Source: %v", *group.Source)
+			log.Debug().Msgf("Source: %v", *conceptMap.SourceUri)
 			for _, element := range group.Element {
 				if *element.Code == "*" {
 					for _, target := range element.Target {
@@ -79,10 +85,8 @@ func TranslateCode(conceptMap fhir.ConceptMap, sourceCode *string, typeIsCode bo
 				}
 			}
 		}
-
-		//}
 	}
-	return nil, nil, fmt.Errorf("code not found in ConceptMap")
+	return nil, nil, nil
 }
 
 func LoadConceptMaps(log zerolog.Logger) error {
@@ -115,37 +119,43 @@ func LoadConceptMaps(log zerolog.Logger) error {
 // - What to do with system and display fields? (not yet implemented)
 // - Let cocneptmappingn for codes not in conceptmpa map to unknwon oid (or should this be done in conceptmap?)
 
-func performConceptMapping(fhirPath string, inputValue string, typeIsCode bool, log zerolog.Logger) (string, string, error) {
+// TODO: check if some code from processresources.go can moved to here
+func performConceptMapping(valuesetBindingPath string, inputValue string, typeIsCode bool, log zerolog.Logger) (string, string, error) {
 	// Check if fhirPath is in FhirPathToValueset
-	_, exists := FhirPathToValueset[fhirPath]
+	_, exists := FhirPathToValueset[valuesetBindingPath]
 	if !exists {
-		log.Debug().Msgf("FHIR Path %s is not in FhirPathToValueset", fhirPath)
+		log.Debug().Msgf("FHIR valuesetBindingPath %s is not in FhirPathToValueset", valuesetBindingPath)
 		return inputValue, "", nil
 	}
 
-	log.Debug().Msgf("FHIR Path %s is in FhirPathToValueset", fhirPath)
+	log.Debug().Msgf("FHIR valuesetBindingPath %s is in FhirPathToValueset", valuesetBindingPath)
 
 	// Collect the ConceptMap for the FHIR path
-	conceptMap, err := getConceptMapForFhirPath(fhirPath, log)
+	conceptMap, err := getConceptMapForFhirPath(valuesetBindingPath, log)
 	if err != nil {
 		log.Debug().Msgf("Failed to get ConceptMap for FHIR Path: %v", err)
 		// No error return needed in this case
 		return inputValue, "", nil
 	}
 
-	log.Debug().Msgf("ConceptMap for FHIR Path %s: %v", fhirPath, *conceptMap.Id)
+	log.Debug().Msgf("ConceptMap for FHIR valuesetBindingPath %s: %v", valuesetBindingPath, *conceptMap.Id)
 
 	// Perform concept mapping using the ConceptMap
 	targetCode, targetDisplay, err := TranslateCode(conceptMap, &inputValue, typeIsCode, log)
 	if err != nil {
 		return "", "", fmt.Errorf("Failed to map concept code: %v", err)
 	}
-	log.Debug().Msgf("Mapped concept code: %v, display: %v", *targetCode, *targetDisplay)
+	// TODO check if this goes well when targetDisplay is nil, if that case can happen
+	if targetCode != nil {
+		log.Debug().Msgf("Mapped concept code: %v, display: %v", *targetCode, *targetDisplay)
+		// Return the mapped code and display
+		return *targetCode, *targetDisplay, nil
+	}
+	return "", "", nil
 
-	// Return the mapped code and display
-	return *targetCode, *targetDisplay, nil
 }
 
+// TODO: check if this function is still needed, probably not because performConceptMapping is used directly
 func applyConceptMappingForStruct(structPath string, structType reflect.Type, structPointer interface{}, log zerolog.Logger) error {
 	// Get the FHIR path for ValueSet binding
 	fhirPath := getValueSetBindingPath(structPath, structType.Name())
@@ -164,6 +174,7 @@ func applyConceptMappingForStruct(structPath string, structType reflect.Type, st
 
 	// Get the code field value
 	fieldValue := structValue.FieldByName("Code")
+	log.Debug().Msgf("Field value: %v", fieldValue)
 	fieldValueStr := getStringValue(fieldValue.Elem())
 
 	// Perform concept mapping using the shared function
@@ -184,6 +195,7 @@ func applyConceptMappingForStruct(structPath string, structType reflect.Type, st
 	return nil
 }
 
+// TODO: check if this function is still needed, probably not because performConceptMapping is used directly
 func applyConceptMappingForField(structPath string, structFieldName string, inputValue interface{}, log zerolog.Logger) (interface{}, error) {
 	// Construct the FHIR path
 	fhirPath := structPath + "." + strings.ToLower(structFieldName)
@@ -192,7 +204,6 @@ func applyConceptMappingForField(structPath string, structFieldName string, inpu
 
 	// Convert inputValue to a string for concept mapping
 	stringInputValue := getStringValue(reflect.ValueOf(inputValue))
-	log.Debug().Msgf("Converted inputValue to string: %s", stringInputValue)
 
 	// Perform concept mapping using the shared function
 	mappedCode, _, err := performConceptMapping(fhirPath, stringInputValue, true, log)
@@ -202,4 +213,26 @@ func applyConceptMappingForField(structPath string, structFieldName string, inpu
 
 	// Return the mapped value
 	return mappedCode, nil
+}
+
+func prepareForConceptMappingCode(structValue reflect.Value, structPath string, fieldName string, value interface{}, log zerolog.Logger) (string, string, error) {
+	// Convert inputValue to a string for concept mapping
+	stringInputValue := getStringValue(reflect.ValueOf(value))
+	log.Debug().Msgf("Converted inputValue to string: %s", stringInputValue)
+
+	// Determine paths
+	valuesetBindingPath := structPath + "." + strings.ToLower(fieldName)
+	structValueType := structValue.Type().String()
+	valuesetBindingPathAlternative := AlternativePath(structValueType, strings.ToLower(fieldName))
+
+	// Log paths for debugging
+	log.Debug().Msgf("Default valueSetBindingPath: %s", valuesetBindingPath)
+	log.Debug().Msgf("ValueSetBindingPathAlternative: %s", valuesetBindingPathAlternative)
+
+	// Determine which binding path to use
+	if _, exists := FhirPathToValueset[valuesetBindingPath]; exists {
+		return valuesetBindingPath, stringInputValue, nil // Return the normal path if it exists
+	}
+
+	return valuesetBindingPathAlternative, stringInputValue, nil // Return the alternative path if normal doesn't exist
 }
