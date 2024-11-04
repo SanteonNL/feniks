@@ -246,3 +246,39 @@ INSERT INTO observation_raw (
 ('22', '456', 'http://snomed.info/sct', '444814009', 'Viral load', '2023-06-18T11:30:00', NULL, NULL, 50, 'copies/mL', '<', NULL, NULL, 'Below detectable limit', NULL),
 ('23', '456', 'http://loinc.org', '2339-0', 'Glucose tolerance test', '2023-06-18T12:00:00', NULL, NULL, 11.1, 'mmol/L', '>', NULL, NULL, 'Abnormal', NULL),
 ('24', '456', 'http://snomed.info/sct', '365853002', 'Hemoglobin level', '2023-06-19T09:00:00', NULL, NULL, 14.5, 'g/dL', NULL, NULL, NULL, NULL, NULL);
+
+-- Modify the table structure for Encounter
+CREATE TABLE encounter_raw (
+    encounter_id VARCHAR(18) PRIMARY KEY,
+    identificatienummer VARCHAR(13),
+    encounter_type_codesystem VARCHAR(255),
+    encounter_type_code VARCHAR(255),
+    encounter_type_description VARCHAR(255),
+    encounter_start_time TIMESTAMP,
+    encounter_end_time TIMESTAMP,
+    service_provider VARCHAR(255),
+    encounter_status VARCHAR(50),
+    class_codesystem VARCHAR(255),
+    class_code VARCHAR(255),
+    class_description VARCHAR(255),
+    reason_codesystem VARCHAR(255),
+    reason_code VARCHAR(255),
+    reason_description VARCHAR(255),
+    admission_timestamp TIMESTAMP,
+    discharge_timestamp TIMESTAMP
+);
+
+-- Insert sample data
+INSERT INTO encounter_raw (
+    encounter_id, identificatienummer, encounter_type_codesystem, encounter_type_code, encounter_type_description,
+    encounter_start_time, encounter_end_time, service_provider, encounter_status, class_codesystem,
+    class_code, class_description, reason_codesystem, reason_code, reason_description,
+    admission_timestamp, discharge_timestamp
+) VALUES
+    ('ENC001', '456', 'SystemA', 'E001', 'Emergency Visit', '2023-10-15 08:00:00', 
+    '2023-10-15 12:00:00', 'General Hospital', 'completed', 'ClassSystem1', 'ER', 'Emergency Room', 
+    'ReasonSystem1', 'R01', 'Acute Chest Pain', '2023-10-15 08:00:00', '2023-10-15 12:00:00'),
+    
+    ('ENC002', '456', 'SystemB', 'I001', 'Inpatient Visit', '2023-10-16 09:00:00', 
+    '2023-10-20 15:00:00', 'City Clinic', 'in-progress', 'ClassSystem2', 'INP', 'Inpatient', 
+    'ReasonSystem2', 'R02', 'Post-Surgical Recovery', '2023-10-16 09:00:00', NULL);

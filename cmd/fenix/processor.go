@@ -343,7 +343,7 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 				// Handle regular Coding fields
 				for _, codingRow := range codingRows {
 					if codingRow.ParentID == row.ID {
-						if err := rp.setCodingFromRow("nog invullen", codingPath, field, fieldName, codingRow, processedFields); err != nil {
+						if err := rp.setCodingFromRow(codingPath, codingPath, field, fieldName, codingRow, processedFields); err != nil {
 							return nil, err
 						}
 					}
@@ -629,6 +629,7 @@ func (rp *ResourceProcessor) setCodingFromRow(valuesetBindingPath string, struct
 
 	// TODO: instead of replacing the old coding add the new coding to the slice
 	// Perform concept mapping using the shared function
+	// TODO: check if path for valuesetBindingPath is correct always or als needs an alternative sometimes (as is the case with codes)
 	mappedCode, _, err := performConceptMapping(valuesetBindingPath, code, false, rp.log)
 	if err != nil {
 		return err

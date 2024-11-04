@@ -6,3 +6,4 @@ DROP TABLE IF EXISTS couple;
 DROP TABLE IF EXISTS contact_points;
 DROP TABLE IF EXISTS contacts;
 DROP TABLE IF EXISTS observation_raw;
+DROP TABLE IF EXISTS encounter_raw;
