@@ -240,10 +240,11 @@ func (ds *DataSource) removeIndex(part string) string {
 
 // FHIRResourceMap maps resource types to their factory functions
 var FHIRResourceMap = map[string]func() interface{}{
-	"Patient":      func() interface{} { return &fhir.Patient{} },
-	"Observation":  func() interface{} { return &fhir.Observation{} },
-	"Encounter":    func() interface{} { return &fhir.Encounter{} },
-	"Organization": func() interface{} { return &fhir.Organization{} },
+	"Patient":       func() interface{} { return &fhir.Patient{} },
+	"Observation":   func() interface{} { return &fhir.Observation{} },
+	"Encounter":     func() interface{} { return &fhir.Encounter{} },
+	"Organization":  func() interface{} { return &fhir.Organization{} },
+	"Questionnaire": func() interface{} { return &fhir.Questionnaire{} },
 	// Add other resource types as needed
 }
 

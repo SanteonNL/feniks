@@ -282,3 +282,39 @@ INSERT INTO encounter_raw (
     ('ENC002', '456', 'SystemB', 'I001', 'Inpatient Visit', '2023-10-16 09:00:00', 
     '2023-10-20 15:00:00', 'City Clinic', 'in-progress', 'ClassSystem2', 'INP', 'Inpatient', 
     'ReasonSystem2', 'R02', 'Post-Surgical Recovery', '2023-10-16 09:00:00', NULL);
+
+-- Create the questionnaire_raw table
+CREATE TABLE questionnaire_raw (
+    identificatienummer VARCHAR(13), -- "subject.reference" (e.g., Patient/456)
+    questionnaire_id VARCHAR(18) PRIMARY KEY, -- "id"
+    code_codesystem VARCHAR(255), -- "code.coding[0].system"
+    code_code VARCHAR(255), -- "code.coding[0].code"
+    code_display VARCHAR(255), -- "code.coding[0].display"
+    status VARCHAR(50), -- "status"
+    date TIMESTAMP, -- "date"
+    item_linkId VARCHAR(255), -- "item[n].linkId" (where n is the item index)
+    item_text VARCHAR(255), -- "item[n].text"
+    item_type VARCHAR(50), -- "item[n].type"
+    item_code_codesystem VARCHAR(255), -- "item[n].code.coding[0].system"
+    item_code_code VARCHAR(255), -- "item[n].code.coding[0].code"
+    item_code_display VARCHAR(255) -- "item[n].code.coding[0].display"
+);
+
+-- Insert sample data
+INSERT INTO questionnaire_raw (
+    questionnaire_id, identificatienummer, code_codesystem, code_code, 
+    code_display, status, date, item_linkId, 
+    item_text, item_type, 
+    item_code_codesystem, item_code_code, item_code_display
+) VALUES
+    ('QST001', '456', 'http://terminology.hl7.org/CodeSystem/questionnaire-type', 'Q001', 
+    'Patient Satisfaction Survey', 'active', '2023-10-15 08:00:00', 
+    'ITEM01', 'How satisfied are you?', 'string', 
+    'http://terminology.hl7.org/CodeSystem/question-response', 'Satisfaction', 'Satisfaction'
+    ),
+
+    ('QST002', '456', 'http://terminology.hl7.org/CodeSystem/questionnaire-type', 'Q002', 
+    'Health Risk Assessment', 'retired', '2023-10-16 09:00:00', 
+    'ITEM02', 'Do you smoke?', 'boolean', 
+    'http://terminology.hl7.org/CodeSystem/question-response', 'SmokingStatus', 'Smoking Status'
+);

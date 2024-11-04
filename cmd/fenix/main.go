@@ -22,7 +22,8 @@ func main() {
 	}
 	defer db.Close()
 
-	query, err := GetQueryFromFile("queries\\hix\\flat\\encounter.sql")
+	query, err := GetQueryFromFile("queries\\hix\\flat\\questionnaire.sql")
+	//query, err := GetQueryFromFile("queries\\hix\\flat\\encounter.sql")
 	//query, err := GetQueryFromFile("queries\\hix\\flat\\Observation_hix_metingen_metingen.sql")
 	//query, err := GetQueryFromFile("queries\\hix\\flat\\patient.sql")
 
@@ -30,7 +31,8 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to read query from file")
 	}
 
-	dataSource := NewSQLDataSource(db, query, "Encounter", log)
+	dataSource := NewSQLDataSource(db, query, "Questionnaire", log)
+	//dataSource := NewSQLDataSource(db, query, "Encounter", log)
 	//dataSource := NewSQLDataSource(db, query, "Observation", log)
 	//dataSource := NewSQLDataSource(db, query, "Patient", log)
 	// Setup search parameters
