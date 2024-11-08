@@ -20,12 +20,12 @@ identificatienummer as "Patient.id",
     4.6 AS "valuequantity.value",
     'http://unitsofmeasure.org' AS "valuequantity.system",
     'mg/dL' AS "valuequantity.unit",
+    --'mg/dL' AS "valuequantity.code",
    -- '<' AS "valuequantity.comparator",
     'Patient/' || identificatienummer AS "subject.reference",
     'http://terminology.hl7.org/CodeSystem/observation-category' AS "code.coding[0].system",
     'tyy' AS "code.coding[0].code",
-    'Laboratory1' AS "code.coding[0].display",
-    4.6 AS "valuequantity.value"
+    'Laboratory1' AS "code.coding[0].display"
     --metingdatumtijd AS "effectiveDateTime"
 FROM 
     observation_raw
