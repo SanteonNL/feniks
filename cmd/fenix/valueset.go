@@ -17,19 +17,21 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type ValueSetCache struct {
-	cache      map[string]*CachedValueSet
-	mutex      sync.RWMutex
-	fhirClient *http.Client
-	localPath  string
-	log        zerolog.Logger
-}
-
 type CachedValueSet struct {
 	ValueSet    *fhir.ValueSet
 	LastChecked time.Time // Internal tracking only
 }
 
+type ValueSetCache struct {
+	cache      map[string]*CachedValueSet
+	urlToPath  map[string]string
+	mutex      sync.RWMutex
+	localPath  string
+	log        zerolog.Logger
+	fhirClient *http.Client
+}
+
+// These constants and types were in the original but not shown in the refactor
 type ValueSetSource int
 
 const (
@@ -57,9 +59,10 @@ func NewValueSetCache(localPath string, log zerolog.Logger) *ValueSetCache {
 
 	cache := &ValueSetCache{
 		cache:      make(map[string]*CachedValueSet),
-		fhirClient: &http.Client{Timeout: 30 * time.Second},
+		urlToPath:  make(map[string]string),
 		localPath:  localPath,
 		log:        log,
+		fhirClient: &http.Client{Timeout: 30 * time.Second},
 	}
 
 	// Load existing ValueSets
@@ -68,19 +71,6 @@ func NewValueSetCache(localPath string, log zerolog.Logger) *ValueSetCache {
 	}
 
 	return cache
-}
-
-func (vc *ValueSetCache) parseValueSetURL(url string) (string, ValueSetSource) {
-	// Remove any "ValueSet/" prefix
-	url = strings.TrimPrefix(url, "ValueSet/")
-
-	// If it starts with http(s), it's a remote source
-	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-		return url, RemoteSource
-	}
-
-	// Otherwise, it's a local source
-	return url, LocalSource
 }
 
 func (vc *ValueSetCache) GetValueSet(url string) (*fhir.ValueSet, error) {
@@ -92,6 +82,7 @@ func (vc *ValueSetCache) GetValueSet(url string) (*fhir.ValueSet, error) {
 		Str("source", source.String()).
 		Msg("Resolving ValueSet source")
 
+	// Try to get from cache first
 	vc.mutex.RLock()
 	cached, exists := vc.cache[valueSetID]
 	vc.mutex.RUnlock()
@@ -102,9 +93,15 @@ func (vc *ValueSetCache) GetValueSet(url string) (*fhir.ValueSet, error) {
 			lastUpdated = cached.ValueSet.Meta.LastUpdated.Time
 		}
 
+		// Check if we need to update in background
 		if time.Since(lastUpdated) > 24*time.Hour &&
 			time.Since(cached.LastChecked) > 1*time.Hour {
-			go vc.updateValueSet(valueSetID, source)
+			go func() {
+				_, err := vc.updateValueSet(valueSetID, source)
+				if err != nil {
+					vc.log.Error().Err(err).Msg("Background update failed")
+				}
+			}()
 		}
 		return cached.ValueSet, nil
 	}
@@ -112,55 +109,11 @@ func (vc *ValueSetCache) GetValueSet(url string) (*fhir.ValueSet, error) {
 	return vc.updateValueSet(valueSetID, source)
 }
 
-func (vc *ValueSetCache) loadAllFromDisk() error {
-	files, err := os.ReadDir(vc.localPath)
-	if err != nil {
-		return fmt.Errorf("failed to read directory: %w", err)
-	}
-
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
-			valueSetID := strings.TrimSuffix(file.Name(), ".json")
-
-			valueSet, err := vc.loadFromDisk(valueSetID)
-			if err != nil {
-				vc.log.Error().
-					Err(err).
-					Str("file", file.Name()).
-					Msg("Failed to load ValueSet from disk")
-				continue
-			}
-
-			// Initialize metadata if needed
-			if valueSet.Meta == nil {
-				valueSet.Meta = &fhir.Meta{}
-			}
-			if valueSet.Meta.LastUpdated == nil {
-				valueSet.Meta.LastUpdated = &fhir.DateTime{Time: time.Now()}
-			}
-
-			vc.mutex.Lock()
-			vc.cache[valueSetID] = &CachedValueSet{
-				ValueSet:    valueSet,
-				LastChecked: time.Now(),
-			}
-			vc.mutex.Unlock()
-		}
-	}
-
-	vc.log.Info().
-		Int("loadedCount", len(vc.cache)).
-		Msg("Loaded ValueSets from disk")
-	return nil
-}
-
 func (vc *ValueSetCache) updateValueSet(valueSetID string, source ValueSetSource) (*fhir.ValueSet, error) {
-	vc.mutex.Lock()
-	defer vc.mutex.Unlock()
-
 	var valueSet *fhir.ValueSet
 	var err error
 
+	// Fetch from appropriate source
 	switch source {
 	case LocalSource:
 		valueSet, err = vc.fetchFromLocal(valueSetID)
@@ -170,20 +123,25 @@ func (vc *ValueSetCache) updateValueSet(valueSetID string, source ValueSetSource
 
 	if err != nil {
 		// Try to get from cache if fetch fails
-		if cached, exists := vc.cache[valueSetID]; exists {
+		vc.mutex.RLock()
+		cached, exists := vc.cache[valueSetID]
+		vc.mutex.RUnlock()
+
+		if exists {
+			vc.mutex.Lock()
 			cached.LastChecked = time.Now()
+			vc.mutex.Unlock()
+
 			vc.log.Warn().
 				Err(err).
 				Str("valueSetID", valueSetID).
 				Msg("Fetch failed, using cached version")
 			return cached.ValueSet, nil
 		}
+	}
 
-		// Try local storage as last resort
-		valueSet, err = vc.loadFromDisk(valueSetID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load ValueSet from all sources: %w", err)
-		}
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch ValueSet: %w", err)
 	}
 
 	// Ensure metadata is set
@@ -196,24 +154,24 @@ func (vc *ValueSetCache) updateValueSet(valueSetID string, source ValueSetSource
 	}
 
 	// Update cache
+	vc.mutex.Lock()
 	vc.cache[valueSetID] = &CachedValueSet{
 		ValueSet:    valueSet,
 		LastChecked: now,
 	}
+	vc.mutex.Unlock()
 
-	// Save to disk
-	if err := vc.saveToDisk(valueSetID, valueSet); err != nil {
-		vc.log.Error().
-			Err(err).
-			Str("valueSetID", valueSetID).
-			Msg("Failed to save ValueSet to disk")
-	}
+	// Save to disk asynchronously
+	go func() {
+		if err := vc.saveToDisk(valueSetID, valueSet); err != nil {
+			vc.log.Error().
+				Err(err).
+				Str("valueSetID", valueSetID).
+				Msg("Failed to save ValueSet to disk")
+		}
+	}()
 
 	return valueSet, nil
-}
-
-func (vc *ValueSetCache) fetchFromLocal(valueSetID string) (*fhir.ValueSet, error) {
-	return vc.loadFromDisk(valueSetID)
 }
 
 func (vc *ValueSetCache) fetchFromRemote(url string) (*fhir.ValueSet, error) {
@@ -240,53 +198,33 @@ func (vc *ValueSetCache) fetchFromRemote(url string) (*fhir.ValueSet, error) {
 	return &valueSet, nil
 }
 
-// Update the storage functions to use safe filenames
-func (vc *ValueSetCache) loadFromDisk(valueSetID string) (*fhir.ValueSet, error) {
-	safeID := vc.safeFileName(valueSetID)
-	vsPath := filepath.Join(vc.localPath, fmt.Sprintf("%s.json", safeID))
+// The local fetching function
+func (vc *ValueSetCache) fetchFromLocal(valueSetID string) (*fhir.ValueSet, error) {
+	vc.mutex.RLock()
+	fileName, exists := vc.urlToPath[valueSetID]
+	vc.mutex.RUnlock()
 
-	vc.log.Debug().
-		Str("originalID", valueSetID).
-		Str("safeID", safeID).
-		Str("path", vsPath).
-		Msg("Loading ValueSet from disk")
+	if !exists {
+		return nil, fmt.Errorf("no local file mapping found for ValueSet: %s", valueSetID)
+	}
 
-	data, err := os.ReadFile(vsPath)
+	valueSet, originalURL, err := vc.loadValueSetWithMetadata(
+		filepath.Join(vc.localPath, fileName))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, err
 	}
 
-	var valueSet fhir.ValueSet
-	if err := json.Unmarshal(data, &valueSet); err != nil {
-		return nil, fmt.Errorf("failed to parse ValueSet: %w", err)
+	if originalURL != valueSetID {
+		vc.log.Warn().
+			Str("expectedID", valueSetID).
+			Str("foundID", originalURL).
+			Msg("ValueSet ID mismatch in local file")
 	}
 
-	return &valueSet, nil
+	return valueSet, nil
 }
 
-func (vc *ValueSetCache) saveToDisk(valueSetID string, vs *fhir.ValueSet) error {
-	safeID := vc.safeFileName(valueSetID)
-	vsPath := filepath.Join(vc.localPath, fmt.Sprintf("%s.json", safeID))
-
-	vc.log.Debug().
-		Str("originalID", valueSetID).
-		Str("safeID", safeID).
-		Str("path", vsPath).
-		Msg("Saving ValueSet to disk")
-
-	data, err := json.MarshalIndent(vs, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal ValueSet: %w", err)
-	}
-
-	if err := os.WriteFile(vsPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-
-	return nil
-}
-
-// safeFileName converts a URL to a safe filename while maintaining uniqueness
+// The original safeFileName function (still needed for new files)
 func (vc *ValueSetCache) safeFileName(url string) string {
 	// Create a hash of the original URL to ensure uniqueness
 	hasher := sha256.New()
@@ -321,13 +259,175 @@ func (vc *ValueSetCache) safeFileName(url string) string {
 	}
 
 	// Combine readable name with hash
-	return fmt.Sprintf("%s-%s", name, hash)
+	return fmt.Sprintf("%s-%s.json", name, hash)
 }
 
-// Add this method to your ValueSetCache struct
 func (vc *ValueSetCache) SetTimeout(duration time.Duration) {
 	vc.log.Info().
 		Str("timeout", duration.String()).
 		Msg("Setting client timeout")
 	vc.fhirClient.Timeout = duration
+}
+
+func (vc *ValueSetCache) parseValueSetURL(url string) (string, ValueSetSource) {
+	url = strings.TrimPrefix(url, "ValueSet/")
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		return url, RemoteSource
+	}
+	return url, LocalSource
+}
+func (vc *ValueSetCache) loadAllFromDisk() error {
+	files, err := os.ReadDir(vc.localPath)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	// Load the URL mapping file if it exists
+	if err := vc.loadURLMapping(); err != nil {
+		vc.log.Debug().Err(err).Msg("Failed to load existing URL mapping, will rebuild from metadata")
+		// Continue with empty mapping, will rebuild from metadata
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") && file.Name() != "url_mapping.json" {
+			filePath := filepath.Join(vc.localPath, file.Name())
+
+			valueSet, originalURL, err := vc.loadValueSetWithMetadata(filePath)
+			if err != nil {
+				vc.log.Error().
+					Err(err).
+					Str("file", file.Name()).
+					Msg("Failed to load ValueSet from disk")
+				continue
+			}
+
+			// Initialize metadata if needed
+			if valueSet.Meta == nil {
+				valueSet.Meta = &fhir.Meta{}
+			}
+			if valueSet.Meta.LastUpdated == nil {
+				valueSet.Meta.LastUpdated = &fhir.DateTime{Time: time.Now()}
+			}
+
+			vc.mutex.Lock()
+			vc.cache[originalURL] = &CachedValueSet{
+				ValueSet:    valueSet,
+				LastChecked: time.Now(),
+			}
+			// Store the filename without full path
+			vc.urlToPath[originalURL] = file.Name()
+			vc.mutex.Unlock()
+		}
+	}
+
+	// Save the URL mapping in case it was rebuilt
+	if err := vc.saveURLMapping(); err != nil {
+		vc.log.Warn().Err(err).Msg("Failed to save rebuilt URL mapping")
+	}
+
+	vc.log.Info().
+		Int("loadedCount", len(vc.cache)).
+		Int("mappingCount", len(vc.urlToPath)).
+		Msg("Loaded ValueSets from disk")
+	return nil
+}
+
+type ValueSetMetadata struct {
+	OriginalURL string         `json:"originalUrl"`
+	ValueSet    *fhir.ValueSet `json:"valueSet"`
+}
+
+func (vc *ValueSetCache) loadValueSetWithMetadata(filePath string) (*fhir.ValueSet, string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// First try to load as metadata format
+	var metadata ValueSetMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		// If that fails, try loading as plain ValueSet (backwards compatibility)
+		var valueSet fhir.ValueSet
+		if err := json.Unmarshal(data, &valueSet); err != nil {
+			return nil, "", fmt.Errorf("failed to parse ValueSet or metadata: %w", err)
+		}
+
+		// For backwards compatibility, try to extract ID from filename
+		baseFileName := filepath.Base(filePath)
+		originalURL := strings.TrimSuffix(baseFileName, filepath.Ext(baseFileName))
+
+		return &valueSet, originalURL, nil
+	}
+
+	if metadata.ValueSet == nil {
+		return nil, "", fmt.Errorf("metadata contains nil ValueSet")
+	}
+
+	return metadata.ValueSet, metadata.OriginalURL, nil
+}
+
+func (vc *ValueSetCache) saveToDisk(valueSetID string, vs *fhir.ValueSet) error {
+	vc.mutex.Lock()
+	fileName, exists := vc.urlToPath[valueSetID]
+	if !exists {
+		// Create new filename only if it doesn't exist
+		fileName = vc.safeFileName(valueSetID)
+		vc.urlToPath[valueSetID] = fileName
+	}
+	vc.mutex.Unlock()
+
+	vsPath := filepath.Join(vc.localPath, fileName)
+
+	metadata := ValueSetMetadata{
+		OriginalURL: valueSetID,
+		ValueSet:    vs,
+	}
+
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal ValueSet metadata: %w", err)
+	}
+
+	if err := os.WriteFile(vsPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	// Save the updated URL mapping
+	return vc.saveURLMapping()
+}
+
+func (vc *ValueSetCache) loadURLMapping() error {
+	mappingPath := filepath.Join(vc.localPath, "url_mapping.json")
+	data, err := os.ReadFile(mappingPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// First time initialization - not an error
+			vc.log.Debug().Msg("URL mapping file doesn't exist yet, will create on first save")
+			return nil
+		}
+		return fmt.Errorf("failed to read URL mapping file: %w", err)
+	}
+
+	vc.mutex.Lock()
+	defer vc.mutex.Unlock()
+
+	if err := json.Unmarshal(data, &vc.urlToPath); err != nil {
+		return fmt.Errorf("failed to parse URL mapping file: %w", err)
+	}
+
+	return nil
+}
+
+func (vc *ValueSetCache) saveURLMapping() error {
+	mappingPath := filepath.Join(vc.localPath, "url_mapping.json")
+
+	vc.mutex.RLock()
+	data, err := json.MarshalIndent(vc.urlToPath, "", "  ")
+	vc.mutex.RUnlock()
+
+	if err != nil {
+		return fmt.Errorf("failed to marshal URL mapping: %w", err)
+	}
+
+	return os.WriteFile(mappingPath, data, 0644)
 }

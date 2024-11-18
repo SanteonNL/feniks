@@ -64,6 +64,8 @@ func ProcessResources(ds *DataSource, patientID string, searchParams SearchParam
 		return nil, fmt.Errorf("error reading data: %w", err)
 	}
 
+	WriteToJSON(results, "results", "output/temp", log)
+
 	log.Info().Msgf("Number of results found: %d", len(results))
 
 	var processedResources []interface{}
