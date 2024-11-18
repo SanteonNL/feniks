@@ -22,7 +22,7 @@ func main() {
 	}
 	defer db.Close()
 
-	query, err := GetQueryFromFile("queries\\hix\\flat\\questionnaire.sql")
+	query, err := GetQueryFromFile("queries\\hix\\flat\\Observation_hix_metingen_metingen.sql")
 	//query, err := GetQueryFromFile("queries\\hix\\flat\\encounter.sql")
 	//query, err := GetQueryFromFile("queries\\hix\\flat\\Observation_hix_metingen_metingen.sql")
 	//query, err := GetQueryFromFile("queries\\hix\\flat\\patient.sql")
@@ -31,7 +31,7 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to read query from file")
 	}
 
-	dataSource := NewSQLDataSource(db, query, "Questionnaire", log)
+	dataSource := NewSQLDataSource(db, query, "Observation", log)
 	//dataSource := NewSQLDataSource(db, query, "Encounter", log)
 	//dataSource := NewSQLDataSource(db, query, "Observation", log)
 	//dataSource := NewSQLDataSource(db, query, "Patient", log)
@@ -48,16 +48,16 @@ func main() {
 		// 	Comparator: "eq",
 		// 	Value:      "1992-01-01",
 		// },
-		"Observation.code": {
-			Code:  "code",
-			Type:  "token",
-			Value: "tyy",
-		},
-		"Observation.category": {
-			Code:  "category",
-			Type:  "token",
-			Value: "tommy",
-		},
+		// "Observation.code": {
+		// 	Code:  "code",
+		// 	Type:  "token",
+		// 	Value: "https://decor.nictiz.nl/fhir/4.0/san-gen-/ValueSet/2.16.840.1.113883.2.4.3.11.60.124.11.115--20240819114333?_format=json",
+		// },
+		// "Observation.category": {
+		// 	Code:  "category",
+		// 	Type:  "token",
+		// 	Value: "tommy",
+		// },
 	}
 
 	// TODO: integrate with processing all json datasources

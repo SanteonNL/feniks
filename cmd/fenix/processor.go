@@ -25,14 +25,14 @@ type SearchParameter struct {
 // Add this type at the top level
 type ProcessedPaths map[string]bool
 
-// Modify ResourceProcessor to track processed paths
-// Modify ResourceProcessor to include the result map
+// Modify ResourceProcessor to track processed paths// First update the ResourceProcessor struct to include the cache
 type ResourceProcessor struct {
 	resourceType   string
 	searchParams   SearchParameterMap
 	log            zerolog.Logger
 	processedPaths ProcessedPaths
-	result         map[string][]RowData // Add this field
+	result         map[string][]RowData
+	valueSetCache  *ValueSetCache // Add this field
 }
 
 type FilterResult struct {
@@ -40,14 +40,21 @@ type FilterResult struct {
 	Message string
 }
 
-// Update NewResourceProcessor
+// Update the constructor to initialize the cache
 func NewResourceProcessor(resourceType string, searchParams SearchParameterMap, log zerolog.Logger, result map[string][]RowData) *ResourceProcessor {
+	// Initialize the ValueSet cache
+	valueSetCache := NewValueSetCache(
+		"./valueset", // Local storage path
+		log,
+	)
+
 	return &ResourceProcessor{
 		resourceType:   resourceType,
 		searchParams:   searchParams,
 		log:            log,
 		processedPaths: make(ProcessedPaths),
 		result:         result,
+		valueSetCache:  valueSetCache,
 	}
 }
 
@@ -57,6 +64,8 @@ func ProcessResources(ds *DataSource, patientID string, searchParams SearchParam
 	if err != nil {
 		return nil, fmt.Errorf("error reading data: %w", err)
 	}
+
+	WriteToJSON(results, "results", "output/temp", log)
 
 	log.Info().Msgf("Number of results found: %d", len(results))
 
@@ -618,7 +627,7 @@ func (rp *ResourceProcessor) setCodingFromRow(valuesetBindingPath string, struct
 	// Create the Coding
 	coding := fhir.Coding{
 		Code:    stringPtr(code),
-		Display: stringPtr("mapped system"),
+		Display: stringPtr("mapped display"),
 		System:  stringPtr(system),
 	}
 
