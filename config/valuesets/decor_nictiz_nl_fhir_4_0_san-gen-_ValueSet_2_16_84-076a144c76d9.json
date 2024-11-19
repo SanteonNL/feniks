@@ -1,0 +1,321 @@
+{
+  "originalUrl": "https://decor.nictiz.nl/fhir/4.0/san-gen-/ValueSet/2.16.840.1.113883.2.4.3.11.60.124.11.115--20240819114333",
+  "valueSet": {
+    "id": "2.16.840.1.113883.2.4.3.11.60.124.11.115--20240819114333",
+    "meta": {
+      "lastUpdated": "2024-08-21T12:20:43.000Z",
+      "source": "http://decor.nictiz.nl/fhir/4.0/san-gen-",
+      "profile": [
+        "http://hl7.org/fhir/StructureDefinition/shareablevalueset"
+      ],
+      "tag": [
+        {
+          "system": "http://hl7.org/fhir/FHIR-version",
+          "code": "4.0.1"
+        }
+      ]
+    },
+    "extension": [
+      {
+        "url": "http://hl7.org/fhir/StructureDefinition/resource-effectivePeriod",
+        "valuePeriod": {
+          "start": "2024-08-19T11:43:33Z"
+        }
+      }
+    ],
+    "url": "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.124.11.115--20240819114333",
+    "identifier": [
+      {
+        "use": "official",
+        "system": "urn:ietf:rfc:3986",
+        "value": "urn:oid:2.16.840.1.113883.2.4.3.11.60.124.11.115"
+      }
+    ],
+    "version": "2024-08-19T11:43:33",
+    "name": "TypeAdministeredO2Codelijst",
+    "title": "TypeAdministeredO2Codelijst",
+    "status": "draft",
+    "experimental": false,
+    "publisher": "Santeon",
+    "contact": [
+      {
+        "name": "Santeon",
+        "telecom": [
+          {
+            "system": "email",
+            "value": "j.hendrikx@santeon.nl"
+          }
+        ]
+      }
+    ],
+    "description": "TypeAdministeredO2Codelijst",
+    "immutable": false,
+    "copyright": "This artefact includes content from SNOMED Clinical Terms® (SNOMED CT®) which is copyright of the International Health Terminology Standards Development Organisation (IHTSDO). Implementers of these artefacts must have the appropriate SNOMED CT Affiliate license - for more information contact http://www.snomed.org/snomed-ct/getsnomed-ct or info@snomed.org.",
+    "compose": {
+      "include": [
+        {
+          "system": "http://pacmed.ai/sct",
+          "concept": [
+            {
+              "code": "niv_mask",
+              "display": "Niv mask",
+              "designation": [
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000003001",
+                    "display": "Fully specified name"
+                  },
+                  "value": "NIV-masker"
+                }
+              ]
+            },
+            {
+              "code": "tracheal_cannula",
+              "display": "Tracheal cannula",
+              "designation": [
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000003001",
+                    "display": "Fully specified name"
+                  },
+                  "value": "Tracheacanule"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "system": "http://loinc.org",
+          "concept": [
+            {
+              "code": "LA11916-6",
+              "display": "Adult nasal cannula",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Nasal cannula"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Neuscanule"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "system": "http://snomed.info/sct",
+          "concept": [
+            {
+              "code": "371785003",
+              "display": "Ambu bag (physical object)",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Ambu balloon"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Ambu-ballon"
+                }
+              ]
+            },
+            {
+              "code": "426854004",
+              "display": "High flow oxygen nasal cannula (physical object)",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "High flow oxygen"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Optiflow"
+                }
+              ]
+            },
+            {
+              "code": "297117007",
+              "display": "Heat and moisture exchanger (physical object)",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Swedish nose"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Zweedse neus"
+                }
+              ]
+            },
+            {
+              "code": "32667006",
+              "display": "Oropharyngeal airway device (physical object)",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Mayo tube"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Mayotube"
+                }
+              ]
+            },
+            {
+              "code": "336602003",
+              "display": "Oxygen mask (physical object)",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Oxygen mask"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Zuurstofmasker"
+                }
+              ]
+            },
+            {
+              "code": "257462007",
+              "display": "Tracheal tube (physical object)",
+              "designation": [
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Buis"
+                },
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Tube"
+                }
+              ]
+            },
+            {
+              "code": "427591007",
+              "display": "Nonrebreather oxygen mask (physical object)",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Non rebreathing mask"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Non-rebreathing masker"
+                }
+              ]
+            },
+            {
+              "code": "257268009",
+              "display": "Laryngeal mask (physical object)",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Laryngeal mask"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Larynx masker"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "resourceType": "ValueSet"
+  }
+}

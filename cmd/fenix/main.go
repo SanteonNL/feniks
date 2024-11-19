@@ -75,6 +75,19 @@ func main() {
 		log.Debug().Str("Path", fhirPath).Str("ValueSet", valueset).Msgf("Check if FhirPathToValueset is filled correctly")
 	}
 
+	// Create a new ResourceLoader
+	rl := NewResourceLoader("config", log)
+
+	// Load resources
+	if err := rl.LoadResources(); err != nil {
+		log.Fatal().Err(err).Msg("Failed to load resources")
+	}
+
+	// Fix ConceptMaps
+	if err := rl.FixConceptMaps(); err != nil {
+		log.Fatal().Err(err).Msg("Failed to fix ConceptMaps")
+	}
+
 	// TODO: integrate with processing all json datasources
 	// Load ConceptMaps
 	err = LoadConceptMaps(log)

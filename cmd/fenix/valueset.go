@@ -179,23 +179,61 @@ func (vc *ValueSetCache) fetchFromRemote(url string) (*fhir.ValueSet, error) {
 		Str("url", url).
 		Msg("Fetching ValueSet from remote server")
 
-	resp, err := vc.fhirClient.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add headers to request JSON
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err := vc.fhirClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	// Read the full response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Log the response status and first part of body for debugging
+	vc.log.Debug().
+		Int("statusCode", resp.StatusCode).
+		Str("contentType", resp.Header.Get("Content-Type")).
+		Str("bodyPreview", string(bodyBytes[:min(len(bodyBytes), 200)])).
+		Msg("Received response")
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("server returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("server returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// Check if response looks like HTML
+	if strings.Contains(string(bodyBytes), "<html") || strings.Contains(string(bodyBytes), "<!DOCTYPE") {
+		vc.log.Error().
+			Str("url", url).
+			Str("contentType", resp.Header.Get("Content-Type")).
+			Msg("Received HTML instead of JSON")
+		return nil, fmt.Errorf("received HTML instead of JSON response")
 	}
 
 	var valueSet fhir.ValueSet
-	if err := json.NewDecoder(resp.Body).Decode(&valueSet); err != nil {
-		return nil, fmt.Errorf("failed to decode ValueSet: %w", err)
+	if err := json.Unmarshal(bodyBytes, &valueSet); err != nil {
+		return nil, fmt.Errorf("failed to decode ValueSet: %w\nResponse body: %s", err, string(bodyBytes[:min(len(bodyBytes), 500)]))
 	}
 
 	return &valueSet, nil
+}
+
+// Helper function since min is not available in older Go versions
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // The local fetching function

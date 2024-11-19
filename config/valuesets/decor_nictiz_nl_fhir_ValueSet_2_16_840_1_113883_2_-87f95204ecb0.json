@@ -1,0 +1,130 @@
+{
+  "originalUrl": "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.7--20230312165609",
+  "valueSet": {
+    "id": "2.16.840.1.113883.2.4.3.11.60.909.11.7--20230312165609",
+    "meta": {
+      "lastUpdated": "2024-11-19T20:40:22.282+01:00",
+      "profile": [
+        "http://hl7.org/fhir/StructureDefinition/shareablevalueset"
+      ]
+    },
+    "extension": [
+      {
+        "url": "http://hl7.org/fhir/StructureDefinition/resource-effectivePeriod",
+        "valuePeriod": {
+          "start": "2023-03-12T16:56:09Z"
+        }
+      }
+    ],
+    "url": "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.7--20230312165609",
+    "identifier": [
+      {
+        "use": "official",
+        "system": "urn:ietf:rfc:3986",
+        "value": "urn:oid:2.16.840.1.113883.2.4.3.11.60.909.11.7"
+      }
+    ],
+    "version": "2023-03-12T16:56:09",
+    "name": "TestVL1An1",
+    "title": "TestVL1An1",
+    "status": "draft",
+    "experimental": false,
+    "publisher": "Santeon",
+    "description": "TestVL1An1",
+    "immutable": false,
+    "compose": {
+      "include": [
+        {
+          "system": "https://santeon.nl/sct",
+          "concept": [
+            {
+              "extension": [
+                {
+                  "url": "http://hl7.org/fhir/StructureDefinition/valueset-ordinalValue",
+                  "valueDecimal": 1
+                },
+                {
+                  "url": "http://hl7.org/fhir/StructureDefinition/valueset-concept-comments",
+                  "valueString": "Dit is de def\n                            voor de test"
+                }
+              ],
+              "code": "A_3",
+              "display": "TestDuplicaat",
+              "designation": [
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000003001",
+                    "display": "Fully specified name"
+                  },
+                  "value": "Test of de Display ook mee gaat in CS"
+                }
+              ]
+            },
+            {
+              "code": "A_3",
+              "display": "2e test"
+            }
+          ]
+        },
+        {
+          "system": "urn:oid:2.16.840.1.113883.2.4.3.11.60.909.5.4",
+          "concept": [
+            {
+              "extension": [
+                {
+                  "url": "http://hl7.org/fhir/StructureDefinition/valueset-ordinalValue",
+                  "valueDecimal": 6
+                }
+              ],
+              "code": "1",
+              "display": "Geen"
+            }
+          ]
+        },
+        {
+          "system": "urn:oid:2.16.840.1.113883.2.4.3.11.60.909.5",
+          "concept": [
+            {
+              "extension": [
+                {
+                  "url": "http://hl7.org/fhir/StructureDefinition/valueset-ordinalValue",
+                  "valueDecimal": 3
+                }
+              ],
+              "code": "VL1An1.1",
+              "display": "Nooit"
+            },
+            {
+              "extension": [
+                {
+                  "url": "http://hl7.org/fhir/StructureDefinition/valueset-ordinalValue",
+                  "valueDecimal": 2
+                }
+              ],
+              "code": "VL1An1.2",
+              "display": "Soms"
+            },
+            {
+              "extension": [
+                {
+                  "url": "http://hl7.org/fhir/StructureDefinition/valueset-ordinalValue",
+                  "valueDecimal": 1
+                }
+              ],
+              "code": "VL1An1.4",
+              "display": "Altijd"
+            }
+          ]
+        },
+        {
+          "valueSet": [
+            "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11--20230417000000"
+          ]
+        }
+      ]
+    },
+    "resourceType": "ValueSet"
+  }
+}
