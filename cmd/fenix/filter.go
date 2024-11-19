@@ -113,7 +113,7 @@ func parseTokenValue(value string) (string, string) {
 
 // Token filter main entry point
 func (rp *ResourceProcessor) checkTokenFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
-	if rp.isValueSetReference(param.Value) {
+	if IsValueSetReference(param.Value) {
 		return rp.checkValueSetFilter(field, param)
 	}
 
@@ -541,9 +541,8 @@ func (rp *ResourceProcessor) checkCodingFilter(field reflect.Value, system, code
 	return &FilterResult{Passed: matches}, nil
 }
 
-func (rp *ResourceProcessor) isValueSetReference(value string) bool {
+func IsValueSetReference(value string) bool {
 	if strings.Contains(value, "ValueSet/") {
-		rp.log.Debug().Str("value", value).Msg("ValueSet reference found")
 		return true
 	}
 	return false

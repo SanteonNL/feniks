@@ -319,12 +319,8 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 			Str("fieldName", fieldName).
 			Msg("Checking field type")
 
-		// Handle both direct Coding fields and CodeableConcept fields
-		// TODO add Quantity handling here also?
-		if strings.HasSuffix(fieldType, "Coding") ||
-			strings.HasSuffix(fieldType, "[]Coding") ||
-			strings.HasSuffix(fieldType, "CodeableConcept") ||
-			strings.HasSuffix(fieldType, "[]CodeableConcept") {
+		// Handle Coding and CodeableConcept fields
+		if strings.Contains(fieldType, "Coding") || strings.Contains(fieldType, "CodeableConcept") {
 
 			codingPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
 			rp.processedPaths[codingPath] = true
@@ -591,6 +587,7 @@ func (rp *ResourceProcessor) populateCodeableConcept(conceptValue reflect.Value,
 // Modified setCodingFromRow to add more debug logging
 func (rp *ResourceProcessor) setCodingFromRow(valuesetBindingPath string, structPath string, field reflect.Value, fieldName string, row RowData, processedFields map[string]bool) error {
 	rp.log.Debug().
+		Str("valuesetBindingPath", valuesetBindingPath).
 		Str("structPath", structPath).
 		Str("fieldName", fieldName).
 		Interface("rowData", row.Data).

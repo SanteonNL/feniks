@@ -30,8 +30,8 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to read query from file")
 	}
-
-	dataSource := NewSQLDataSource(db, query, "Observation", log)
+	resourceType := "Observation"
+	dataSource := NewSQLDataSource(db, query, resourceType, log)
 	//dataSource := NewSQLDataSource(db, query, "Encounter", log)
 	//dataSource := NewSQLDataSource(db, query, "Observation", log)
 	//dataSource := NewSQLDataSource(db, query, "Patient", log)
@@ -67,9 +67,12 @@ func main() {
 		log.Warn().Err(err).Msg("Failed to load StructureDefinitions")
 	}
 
+	// You can also update bindings separately if needed:
+	UpdateSearchParameterBindings(resourceType, searchParams, log)
+
 	// Check if FhirPathToValueset is filled correctly
 	for fhirPath, valueset := range FhirPathToValueset {
-		log.Debug().Msgf("Path: %s, Valueset: %s\n", fhirPath, valueset)
+		log.Debug().Str("Path", fhirPath).Str("ValueSet", valueset).Msgf("Check if FhirPathToValueset is filled correctly")
 	}
 
 	// TODO: integrate with processing all json datasources

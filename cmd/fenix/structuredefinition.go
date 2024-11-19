@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/rs/zerolog"
@@ -54,4 +55,28 @@ func CollectValuesetBindingsForCodeTypes(structureDefinition *fhir.StructureDefi
 			}
 		}
 	}
+}
+
+// UpdateSearchParameterBindings updates the FhirPathToValueset map with any ValueSet
+// references found in search parameters
+func UpdateSearchParameterBindings(resourceType string, searchParams SearchParameterMap, log zerolog.Logger) {
+	for searchPath, param := range searchParams {
+		if param.Type == "token" && IsValueSetReference(param.Value) {
+			cleanURL := cleanValueSetURL(param.Value)
+			log.Debug().
+				Str("path", searchPath).
+				Str("valuesetURL", cleanURL).
+				Msg("Adding ValueSet binding from search parameter")
+
+			FhirPathToValueset[searchPath] = cleanURL
+		}
+	}
+}
+
+// cleanValueSetURL removes query parameters from ValueSet URLs
+func cleanValueSetURL(url string) string {
+	if idx := strings.Index(url, "?"); idx != -1 {
+		return url[:idx]
+	}
+	return url
 }
