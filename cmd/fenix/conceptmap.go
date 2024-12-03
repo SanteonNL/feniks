@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -235,4 +236,145 @@ func prepareForConceptMappingCode(structValue reflect.Value, structPath string, 
 	}
 
 	return valuesetBindingPathAlternative, stringInputValue, nil // Return the alternative path if normal doesn't exist
+}
+
+func ValidateCSVMappings(inputPath, outputPath string, valueSetCache *ValueSetCache, log zerolog.Logger) error {
+	// Read input file
+	inFile, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open input CSV: %w", err)
+	}
+	defer inFile.Close()
+
+	// Create output file
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output CSV: %w", err)
+	}
+	defer outFile.Close()
+
+	// Create CSV reader with semicolon separator
+	reader := csv.NewReader(inFile)
+	reader.Comma = ';' // Set semicolon as delimiter
+	reader.TrimLeadingSpace = true
+
+	// Create CSV writer with semicolon separator
+	writer := csv.NewWriter(outFile)
+	writer.Comma = ';' // Set semicolon as delimiter
+	defer writer.Flush()
+
+	// Read headers
+	headers, err := reader.Read()
+	if err != nil {
+		return fmt.Errorf("failed to read headers: %w", err)
+	}
+
+	// Write headers
+	if err := writer.Write(headers); err != nil {
+		return fmt.Errorf("failed to write headers: %w", err)
+	}
+
+	// Find column indices
+	indices := getColumnIndices(headers)
+	if !indices.areValid() {
+		return fmt.Errorf("required columns not found in CSV")
+	}
+
+	// Process each row
+	for {
+		row, err := reader.Read()
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			return fmt.Errorf("failed to read row: %w", err)
+		}
+
+		// Validate the code and get display
+		validationMessage, display := validateCodeAndGetDisplay(row, indices, valueSetCache, log)
+
+		// Update validation column
+		row[indices.targetValidation] = validationMessage
+
+		// Update display if we got one from ValueSet
+		if display != "" {
+			row[indices.targetDisplay] = display
+		}
+
+		// Write the updated row
+		if err := writer.Write(row); err != nil {
+			return fmt.Errorf("failed to write row: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (c columnIndices) areValid() bool {
+	return c.targetValidation != -1 &&
+		c.valueSetURI != -1 &&
+		c.targetSystem != -1 &&
+		c.targetCode != -1 &&
+		c.targetDisplay != -1
+}
+
+func validateCodeAndGetDisplay(row []string, indices columnIndices, cache *ValueSetCache, log zerolog.Logger) (string, string) {
+	if row[indices.valueSetURI] == "" {
+		return "Not validated - no ValueSet URI provided", ""
+	}
+
+	// Get the ValueSet first
+	valueSet, err := cache.GetValueSet(row[indices.valueSetURI])
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err), ""
+	}
+
+	coding := &fhir.Coding{
+		System: &row[indices.targetSystem],
+		Code:   &row[indices.targetCode],
+	}
+
+	result, err := cache.ValidateCode(row[indices.valueSetURI], coding)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err), ""
+	}
+
+	if !result.Valid {
+		return "Invalid code for ValueSet", ""
+	}
+
+	// If valid, try to find the display from the ValueSet
+	display := findDisplayInValueSet(valueSet, row[indices.targetSystem], row[indices.targetCode])
+	return "Valid", display
+}
+
+func findDisplayInValueSet(valueSet *fhir.ValueSet, system, code string) string {
+	if valueSet.Compose == nil {
+		return ""
+	}
+
+	for _, include := range valueSet.Compose.Include {
+		// Check system matches if specified
+		if include.System != nil && *include.System != system {
+			continue
+		}
+
+		// Look through concepts
+		for _, concept := range include.Concept {
+			if concept.Code == code && concept.Display != nil {
+				return *concept.Display
+			}
+		}
+	}
+
+	return ""
+}
+
+func findColumnIndex(headers []string, name string) int {
+	for i, h := range headers {
+		if strings.ToLower(strings.TrimSpace(h)) == strings.ToLower(name) {
+			return i
+		}
+	}
+	return -1
 }

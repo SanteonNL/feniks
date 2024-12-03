@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/rs/zerolog"
@@ -95,9 +96,66 @@ func main() {
 		log.Warn().Err(err).Msg("Failed to load ConceptMaps")
 	}
 
+	// Initialize the cache
+	cache := NewValueSetCache("./valuesets", log)
+
+	// Create a coding to validate
+	coding := &fhir.Coding{
+		System: ptr("http://snomed.info/sct"),
+		Code:   ptr("260686004"),
+	}
+
+	// Validate the code
+	result, err := cache.ValidateCode("https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354", coding)
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
+
+	if result.Valid {
+		fmt.Printf("Code is valid! Found in: %s\n", result.MatchedIn)
+	} else {
+		fmt.Printf("Code is invalid: %s\n", result.ErrorMessage)
+	}
+
+	// inputConceptMapFile, err := filepath.Abs("config\\conceptmaps\\flat\\conceptmap_TommyMeetMethodeLijst.csv")
+	// if err != nil {
+	// 	log.Fatal().Err(err).Msg("Failed to get absolute path for input concept map file")
+	// }
+	// outputConceptMapFile, err := filepath.Abs("config\\conceptmaps\\flat\\conceptmap_TommyMeetMethodeLijst_validated.csv")
+	// if err != nil {
+	// 	log.Fatal().Err(err).Msg("Failed to get absolute path for output concept map file")
+	// }
+
+	// // err = ValidateCSVMappings(inputConceptMapFile, outputConceptMapFile, cache, log)
+	// // if err != nil {
+	// // 	log.Fatal().Err(err).Msg("Validation of conceptmap failed")
+	// // }
+
+	// Create converter
+	converter := NewConceptMapConverter(cache, log)
+
+	// Basic usage - will use default "active" status
+	err = converter.ConvertToFHIR(
+		"config/conceptmaps/flat/conceptmap_TommyMeetMethodeLijst_validated.csv",
+		"config/conceptmaps/fhir/conceptmap_converted.json",
+	)
+	// Basic usage - will use default "active" status
+	err = converter.ConvertToFHIR(
+		"config/conceptmaps/flat/conceptmap_TommyMeetMethodeLijst_validated.csv",
+		"config/conceptmaps/fhir/conceptmap_converted.json",
+	)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Conversion failed")
+	}
+
+	if err != nil {
+		log.Fatal().Err(err).Msg("Conversion failed")
+	}
+
+	os.Exit(0)
 	// Check if ValueSetToConceptMap is filled correctly
-	for valueset, conceptMap := range ValueSetToConceptMap {
-		log.Debug().Msgf("Valueset: %s, Conceptmap ID: %s\n", valueset, *conceptMap.Id)
+	for valuesetName, conceptMap := range ValueSetToConceptMap {
+		log.Debug().Msgf("Valueset: %s, Conceptmap ID: %s\n", valuesetName, *conceptMap.Id)
 	}
 
 	// Process resources

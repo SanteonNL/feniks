@@ -138,9 +138,6 @@ func (vc *ValueSetCache) updateValueSet(valueSetID string, source ValueSetSource
 				Msg("Fetch failed, using cached version")
 			return cached.ValueSet, nil
 		}
-	}
-
-	if err != nil {
 		return nil, fmt.Errorf("failed to fetch ValueSet: %w", err)
 	}
 
@@ -171,9 +168,58 @@ func (vc *ValueSetCache) updateValueSet(valueSetID string, source ValueSetSource
 		}
 	}()
 
+	// Cache included ValueSets in the background
+	go vc.cacheIncludedValueSets(valueSet)
+
 	return valueSet, nil
 }
 
+// cacheIncludedValueSets preemptively caches all ValueSets referenced in the compose section
+func (vc *ValueSetCache) cacheIncludedValueSets(valueSet *fhir.ValueSet) {
+	if valueSet.Compose == nil {
+		return
+	}
+
+	// Track processed URLs to avoid duplicates
+	processedURLs := make(map[string]bool)
+
+	var wg sync.WaitGroup
+	for _, include := range valueSet.Compose.Include {
+		if include.ValueSet == nil {
+			continue
+		}
+
+		for _, includedVSURL := range include.ValueSet {
+			// Skip if already processed
+			if processedURLs[includedVSURL] {
+				continue
+			}
+			processedURLs[includedVSURL] = true
+
+			wg.Add(1)
+			go func(url string) {
+				defer wg.Done()
+
+				// Try to get included ValueSet
+				includedVS, err := vc.GetValueSet(url)
+				if err != nil {
+					vc.log.Warn().
+						Err(err).
+						Str("url", url).
+						Msg("Failed to cache included ValueSet")
+					return
+				}
+
+				vc.log.Debug().
+					Str("url", url).
+					Str("name", *includedVS.Name).
+					Msg("Successfully cached included ValueSet")
+			}(includedVSURL)
+		}
+	}
+
+	wg.Wait()
+}
 func (vc *ValueSetCache) fetchFromRemote(url string) (*fhir.ValueSet, error) {
 	vc.log.Debug().
 		Str("url", url).
@@ -468,4 +514,124 @@ func (vc *ValueSetCache) saveURLMapping() error {
 	}
 
 	return os.WriteFile(mappingPath, data, 0644)
+}
+
+// ValidationResult represents the result of a code validation
+type ValidationResult struct {
+	Valid        bool
+	MatchedIn    string // Which ValueSet contained the match
+	ErrorMessage string
+}
+
+// ValidateCode checks if a given code is valid within a ValueSet, including composed ValueSets
+func (vc *ValueSetCache) ValidateCode(valueSetURL string, coding *fhir.Coding) (*ValidationResult, error) {
+	processedURLs := sync.Map{}
+	return vc.validateCodeRecursive(valueSetURL, coding, &processedURLs)
+}
+
+func (vc *ValueSetCache) validateCodeRecursive(valueSetURL string, coding *fhir.Coding, processedURLs *sync.Map) (*ValidationResult, error) {
+	if _, exists := processedURLs.Load(valueSetURL); exists {
+		return nil, fmt.Errorf("circular reference detected in ValueSet: %s", valueSetURL)
+	}
+	processedURLs.Store(valueSetURL, true)
+
+	// Get the ValueSet
+	valueSet, err := vc.GetValueSet(valueSetURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch ValueSet %s: %w", valueSetURL, err)
+	}
+
+	// First check the direct concepts in this ValueSet
+	result := vc.validateDirectConcepts(valueSet, coding)
+	if result.Valid {
+		return result, nil
+	}
+
+	// If no direct match found and compose section exists, check included ValueSets
+	if valueSet.Compose != nil {
+		// Create a channel for results from included ValueSets
+		type includeResult struct {
+			result *ValidationResult
+			err    error
+		}
+		results := make(chan includeResult)
+
+		// Process each include in parallel
+		var wg sync.WaitGroup
+		for _, include := range valueSet.Compose.Include {
+			if include.ValueSet == nil || len(include.ValueSet) == 0 {
+				continue
+			}
+
+			for _, includedVSURL := range include.ValueSet {
+				wg.Add(1)
+				go func(url string) {
+					defer wg.Done()
+					res, err := vc.validateCodeRecursive(url, coding, processedURLs)
+					results <- includeResult{res, err}
+				}(includedVSURL)
+			}
+		}
+
+		// Close results channel when all goroutines complete
+		go func() {
+			wg.Wait()
+			close(results)
+		}()
+
+		// Check results from included ValueSets
+		for r := range results {
+			if r.err != nil {
+				vc.log.Warn().Err(r.err).Msg("Error validating included ValueSet")
+				continue
+			}
+			if r.result.Valid {
+				return r.result, nil
+			}
+		}
+	}
+
+	return &ValidationResult{
+		Valid:        false,
+		ErrorMessage: fmt.Sprintf("Code not found in ValueSet %s or its included ValueSets", valueSetURL),
+	}, nil
+}
+func (vc *ValueSetCache) validateDirectConcepts(valueSet *fhir.ValueSet, coding *fhir.Coding) *ValidationResult {
+	if valueSet.Compose == nil {
+		return &ValidationResult{
+			Valid:        false,
+			ErrorMessage: "ValueSet has no compose element",
+		}
+	}
+
+	var codingSystem, codingCode string
+	if coding.System != nil {
+		codingSystem = *coding.System
+	}
+	if coding.Code != nil {
+		codingCode = *coding.Code
+	}
+
+	// Check each include in the compose
+	for _, include := range valueSet.Compose.Include {
+		// Skip if this include specifies a different system
+		if include.System != nil && *include.System != codingSystem {
+			continue
+		}
+
+		// Check direct concepts
+		for _, concept := range include.Concept {
+			if concept.Code == codingCode {
+				return &ValidationResult{
+					Valid:     true,
+					MatchedIn: *valueSet.Url,
+				}
+			}
+		}
+	}
+
+	return &ValidationResult{
+		Valid:        false,
+		ErrorMessage: "Code not found in direct concepts",
+	}
 }

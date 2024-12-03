@@ -153,6 +153,7 @@ func (rp *ResourceProcessor) checkValueSetFilter(field reflect.Value, param Sear
 			Msg("Failed to fetch ValueSet")
 		return nil, fmt.Errorf("failed to fetch ValueSet: %w", err)
 	}
+	//TODO USE cache.ValidateCode instead of looping
 
 	// Create a map to store all valid system/code combinations
 	validCombinations := make(map[string]map[string]bool)

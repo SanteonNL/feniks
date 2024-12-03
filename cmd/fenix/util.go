@@ -71,3 +71,7 @@ func WriteToJSON[T any](data T, prefix string, outputDir string, log zerolog.Log
 
 	return nil
 }
+
+func ptr(s string) *string {
+	return &s
+}

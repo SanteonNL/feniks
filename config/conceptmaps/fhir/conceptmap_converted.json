@@ -1,0 +1,43 @@
+{
+  "name": "ConceptMap_20241203",
+  "status": "active",
+  "description": "Converted from conceptmap_TommyMeetMethodeLijst_validated.csv on 2024-12-03 22:07:20",
+  "targetUri": "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354",
+  "group": [
+    {
+      "source": "https://mst.nl/mct",
+      "target": "https//tommytest.nl/tct",
+      "element": [
+        {
+          "code": "M12",
+          "display": "Hele fijne methode",
+          "target": [
+            {
+              "code": "SC_3",
+              "display": "ad",
+              "equivalence": "equal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "source": "https://mst.nl/mct",
+      "target": "https//sdf.nl/tct",
+      "element": [
+        {
+          "code": "M15",
+          "display": "Hele fijne methode",
+          "target": [
+            {
+              "code": "SC_4",
+              "display": "ad",
+              "equivalence": "equal"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "resourceType": "ConceptMap"
+}
