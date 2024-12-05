@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/conceptmap"
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/structuredefinition"
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/valueset"
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -97,7 +101,7 @@ func main() {
 	}
 
 	// Initialize the cache
-	cache := NewValueSetCache("./valuesets", log)
+	cache := valueset.NewValueSetCache("./valuesets", log)
 
 	// Create a coding to validate
 	coding := &fhir.Coding{
@@ -105,54 +109,79 @@ func main() {
 		Code:   ptr("260686004"),
 	}
 
+	// Create a context
+	ctx := context.Background()
+
 	// Validate the code
-	result, err := cache.ValidateCode("https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354", coding)
+	result, err := cache.ValidateCode(ctx, "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354", coding)
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
-
 	if result.Valid {
 		fmt.Printf("Code is valid! Found in: %s\n", result.MatchedIn)
 	} else {
 		fmt.Printf("Code is invalid: %s\n", result.ErrorMessage)
 	}
 
-	// inputConceptMapFile, err := filepath.Abs("config\\conceptmaps\\flat\\conceptmap_TommyMeetMethodeLijst.csv")
-	// if err != nil {
-	// 	log.Fatal().Err(err).Msg("Failed to get absolute path for input concept map file")
-	// }
-	// outputConceptMapFile, err := filepath.Abs("config\\conceptmaps\\flat\\conceptmap_TommyMeetMethodeLijst_validated.csv")
-	// if err != nil {
-	// 	log.Fatal().Err(err).Msg("Failed to get absolute path for output concept map file")
-	// }
-
-	// // err = ValidateCSVMappings(inputConceptMapFile, outputConceptMapFile, cache, log)
-	// // if err != nil {
-	// // 	log.Fatal().Err(err).Msg("Validation of conceptmap failed")
-	// // }
-
-	// Create converter
-	converter := NewConceptMapConverter(cache, log)
-
-	// Basic usage - will use default "active" status
-	err = converter.ConvertToFHIR(
-		"config/conceptmaps/flat/conceptmap_TommyMeetMethodeLijst_validated.csv",
-		"config/conceptmaps/fhir/conceptmap_converted.json",
-	)
-	// Basic usage - will use default "active" status
-	err = converter.ConvertToFHIR(
-		"config/conceptmaps/flat/conceptmap_TommyMeetMethodeLijst_validated.csv",
-		"config/conceptmaps/fhir/conceptmap_converted.json",
-	)
+	// Initialize the repository and service
+	conceptmapRepo, err := conceptmap.NewConceptMapRepository("config/conceptmaps/fhir", log)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Conversion failed")
+		log.Fatal().Err(err).Msg("Failed to initialize ConceptMap repository")
 	}
 
+	// Initialize ConceptMap service with the new valueset cache
+	conceptMapService := conceptmap.NewConceptMapService(conceptmapRepo, log)
+
+	// Initialize ConceptMap converter
+	converter := conceptmap.NewConceptMapConverter(log, conceptMapService)
+	// Basic usage - will use default "active" status
+	// Convert CSV to FHIR ConceptMap
+	inputFile := "config/conceptmaps/flat/conceptmap_TommyMeetMethodeLijst_validated.csv"
+	file, err := os.Open(inputFile)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Conversion failed")
+		log.Fatal().Err(err).Str("file", inputFile).Msg("Failed to open input file")
+	}
+	defer file.Close()
+
+	// Convert the CSV to a FHIR ConceptMap using the new converter
+	conceptMapFHIR, err := converter.ConvertCSVToFHIR(file, "TommyMeetMethodeLijst")
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to convert CSV to FHIR ConceptMap")
 	}
 
-	os.Exit(0)
+	// Save the converted ConceptMap using the service
+	outputPath := "config/conceptmaps/fhir/conceptmap_converted2.json"
+	if err := conceptMapService.SaveConceptMap(outputPath, conceptMapFHIR); err != nil {
+		log.Fatal().Err(err).Msg("Failed to save ConceptMap")
+	}
+	// Initialize the repository and service
+	conceptStructureRepo := structuredefinition.NewStructureDefinitionRepository(log)
+	service := structuredefinition.NewStructureDefinitionService(conceptStructureRepo, log)
+
+	// Load StructureDefinitions
+	err = conceptStructureRepo.LoadStructureDefinitions("profiles/sim")
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
+
+	// Example usage: Get ValueSet binding for a specific path
+	path := "Observation.code"
+	valueSetURL, err := service.GetValuesetBindingForPath(path)
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
+
+	fmt.Printf("ValueSet URL for path %s: %s\n", path, valueSetURL)
+
+	conceptMap, err := conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to get ConceptMap for ValueSet")
+	}
+	for _, cm := range conceptMap {
+		fmt.Printf("Found ConceptMap: %s\n", *cm.Name)
+	}
+
+	//os.Exit(0)
 	// Check if ValueSetToConceptMap is filled correctly
 	for valuesetName, conceptMap := range ValueSetToConceptMap {
 		log.Debug().Msgf("Valueset: %s, Conceptmap ID: %s\n", valuesetName, *conceptMap.Id)

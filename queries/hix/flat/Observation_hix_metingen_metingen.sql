@@ -4,7 +4,7 @@ identificatienummer as "Patient.id",
     metingid AS id,
     '' AS parent_id,
     'Observation' AS fhir_path,
-    'finaal' AS "status", -- example of code conceptmapping, should be mapped to final
+    'final' AS "status", -- example of code conceptmapping, should be mapped to final
     --'onbekendecode' AS "status", -- example of code conceptmapping with unknown code
     'text' AS "category[0].text",
     'text1' AS "category[1].text",
