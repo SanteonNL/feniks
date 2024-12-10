@@ -15,7 +15,7 @@ import (
 	"github.com/SanteonNL/fenix/models/fhir"
 )
 
-func (s *ValueSetCache) loadAllFromDisk() error {
+func (s *ValueSetService) loadAllFromDisk() error {
 	files, err := os.ReadDir(s.localPath)
 	if err != nil {
 		return fmt.Errorf("failed to read directory: %w", err)
@@ -53,7 +53,7 @@ func (s *ValueSetCache) loadAllFromDisk() error {
 	return nil
 }
 
-func (s *ValueSetCache) loadValueSetFromDisk(filePath string) (*fhir.ValueSet, error) {
+func (s *ValueSetService) loadValueSetFromDisk(filePath string) (*fhir.ValueSet, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
@@ -72,7 +72,7 @@ func (s *ValueSetCache) loadValueSetFromDisk(filePath string) (*fhir.ValueSet, e
 	return metadata.ValueSet, nil
 }
 
-func (s *ValueSetCache) fetchFromLocal(valueSetID string) (*fhir.ValueSet, error) {
+func (s *ValueSetService) fetchFromLocal(valueSetID string) (*fhir.ValueSet, error) {
 	s.mutex.RLock()
 	fileName, exists := s.urlToPath[valueSetID]
 	s.mutex.RUnlock()
@@ -85,7 +85,7 @@ func (s *ValueSetCache) fetchFromLocal(valueSetID string) (*fhir.ValueSet, error
 	return s.loadValueSetFromDisk(filePath)
 }
 
-func (s *ValueSetCache) fetchFromRemote(ctx context.Context, url string) (*fhir.ValueSet, error) {
+func (s *ValueSetService) fetchFromRemote(ctx context.Context, url string) (*fhir.ValueSet, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

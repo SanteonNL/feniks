@@ -15,7 +15,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type ValueSetCache struct {
+type ValueSetService struct {
 	cache      map[string]*CachedValueSet
 	urlToPath  map[string]string
 	mutex      sync.RWMutex
@@ -24,12 +24,12 @@ type ValueSetCache struct {
 	fhirClient *http.Client
 }
 
-func NewValueSetCache(localPath string, log zerolog.Logger) *ValueSetCache {
+func NewValueSetCache(localPath string, log zerolog.Logger) *ValueSetService {
 	if err := os.MkdirAll(localPath, 0755); err != nil {
 		log.Error().Err(err).Msg("Failed to create local storage directory")
 	}
 
-	cache := &ValueSetCache{
+	cache := &ValueSetService{
 		cache:      make(map[string]*CachedValueSet),
 		urlToPath:  make(map[string]string),
 		localPath:  localPath,
@@ -44,7 +44,7 @@ func NewValueSetCache(localPath string, log zerolog.Logger) *ValueSetCache {
 	return cache
 }
 
-func (s *ValueSetCache) saveToDisk(valueSetID string, valueSet *fhir.ValueSet) error {
+func (s *ValueSetService) saveToDisk(valueSetID string, valueSet *fhir.ValueSet) error {
 	metadata := ValueSetMetadata{
 		OriginalURL: valueSetID,
 		ValueSet:    valueSet,

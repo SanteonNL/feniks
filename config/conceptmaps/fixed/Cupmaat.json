@@ -19,6 +19,23 @@
     "targetUri": "http://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.7--20230312165609",
     "group": [
         {
+            "source": "http://snomed.info/sct",
+            "target": "urn:oid:2.16.840.1.113883.2.4.3.11.60.909.5.4",
+            "element": [
+                {
+                    "code": "201066002",
+                    "display": "Skin striae (disorder)",
+                    "target": [
+                        {
+                            "code": "1",
+                            "display": "Geen",
+                            "equivalence": "equal"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
             "source": "http://decor.nictiz.nl/fhir/CodeSystem/2.16.840.1.113883.2.4.3.11.60.909.5.9--20240808085615",
             "target": "urn:oid:2.16.840.1.113883.2.4.3.11.60.909.5",
             "element": [
@@ -79,23 +96,6 @@
                         {
                             "code": "A_3",
                             "display": "TestDuplicaat",
-                            "equivalence": "equal"
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            "source": "http://snomed.info/sct",
-            "target": "urn:oid:2.16.840.1.113883.2.4.3.11.60.909.5.4",
-            "element": [
-                {
-                    "code": "201066002",
-                    "display": "Skin striae (disorder)",
-                    "target": [
-                        {
-                            "code": "1",
-                            "display": "Geen",
                             "equivalence": "equal"
                         }
                     ]

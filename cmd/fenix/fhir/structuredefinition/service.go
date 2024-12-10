@@ -2,51 +2,103 @@ package structuredefinition
 
 import (
 	"fmt"
+	"strings"
+	"sync"
 
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/rs/zerolog"
 )
 
-// StructureDefinitionService provides functionality to interact with StructureDefinition resources.
+// StructureDefinitionService manages structure definition operations and indexing
 type StructureDefinitionService struct {
-	repo *StructureDefinitionRepository
-	log  zerolog.Logger
+	repo            *StructureDefinitionRepository
+	log             zerolog.Logger
+	pathBindingsMap map[string]string // Maps paths to ValueSet URLs
+	mu              sync.RWMutex
 }
 
-// NewStructureDefinitionService creates a new StructureDefinitionService.
+// NewStructureDefinitionService creates a new structure definition service
 func NewStructureDefinitionService(repo *StructureDefinitionRepository, log zerolog.Logger) *StructureDefinitionService {
 	return &StructureDefinitionService{
-		repo: repo,
-		log:  log,
+		repo:            repo,
+		log:             log,
+		pathBindingsMap: make(map[string]string),
 	}
 }
 
-// CollectValuesetBindingsForCodeTypes collects elements from the StructureDefinition with code types and their value set bindings.
-func (svc *StructureDefinitionService) CollectValuesetBindingsForCodeTypes(structureDefinition *fhir.StructureDefinition) map[string]string {
-	bindings := make(map[string]string)
-	for _, element := range structureDefinition.Snapshot.Element {
-		for _, t := range element.Type {
-			if t.Code == "code" || t.Code == "Coding" || t.Code == "CodeableConcept" || t.Code == "Quantity" {
-				if element.Binding != nil {
-					bindings[element.Path] = *element.Binding.ValueSet
-				} else {
-					svc.log.Debug().Msgf("No binding for path: %s, code: %s", element.Path, t.Code)
+// BuildStructureDefinitionIndex builds the structure definition index for efficient lookups
+func (svc *StructureDefinitionService) BuildStructureDefinitionIndex() error {
+	svc.mu.Lock()
+	defer svc.mu.Unlock()
+
+	// Clear existing index
+	svc.pathBindingsMap = make(map[string]string)
+
+	// Get all structure definitions from repository
+	structDefs := svc.repo.GetAllStructureDefinitions()
+
+	for _, sd := range structDefs {
+		// Process each element for bindings
+		if sd.Snapshot != nil {
+			for _, element := range sd.Snapshot.Element {
+				if element.Binding != nil && element.Binding.ValueSet != nil {
+					path := element.Path
+					valueSetUrl := *element.Binding.ValueSet
+
+					svc.pathBindingsMap[path] = valueSetUrl
+
+					svc.log.Debug().
+						Str("path", path).
+						Str("valueSet", valueSetUrl).
+						Msg("Indexed path binding")
 				}
-				break
 			}
 		}
 	}
-	return bindings
+
+	svc.log.Info().
+		Int("total_bindings", len(svc.pathBindingsMap)).
+		Int("total_structdefs", len(structDefs)).
+		Msg("Completed building structure definition index")
+
+	return nil
 }
 
-// GetValuesetBindingForPath returns the ValueSet binding for a given FHIR path from the loaded StructureDefinitions.
-func (svc *StructureDefinitionService) GetValuesetBindingForPath(path string) (string, error) {
-	for _, structureDefinition := range svc.repo.structureDefinitionsMap {
-		for _, element := range structureDefinition.Snapshot.Element {
-			if element.Path == path && element.Binding != nil {
-				return *element.Binding.ValueSet, nil
-			}
+// GetAllStructureDefinitions returns all structure definitions from repository
+func (svc *StructureDefinitionService) GetAllStructureDefinitions() []*fhir.StructureDefinition {
+	return svc.repo.GetAllStructureDefinitions()
+}
+
+// GetAllPathBindings returns all path bindings for a structure definition
+func (svc *StructureDefinitionService) GetAllPathBindings(sd *fhir.StructureDefinition) map[string]string {
+	svc.mu.RLock()
+	defer svc.mu.RUnlock()
+
+	result := make(map[string]string)
+	prefix := sd.Type + "."
+
+	// Only include paths that belong to this structure definition
+	for path, valueSet := range svc.pathBindingsMap {
+		if path == sd.Type || strings.HasPrefix(path, prefix) {
+			result[path] = valueSet
 		}
 	}
-	return "", fmt.Errorf("ValueSet binding not found for path: %s", path)
+
+	return result
+}
+
+// GetStructureDefinition retrieves a structure definition by URL or name
+func (svc *StructureDefinitionService) GetStructureDefinition(identifier string) (*fhir.StructureDefinition, error) {
+	return svc.repo.GetStructureDefinition(identifier)
+}
+
+// GetValueSetForPath returns the ValueSet URL for a given path
+func (svc *StructureDefinitionService) GetValueSetForPath(path string) (string, error) {
+	svc.mu.RLock()
+	defer svc.mu.RUnlock()
+
+	if valueSet, exists := svc.pathBindingsMap[path]; exists {
+		return valueSet, nil
+	}
+	return "", fmt.Errorf("no ValueSet binding found for path: %s", path)
 }

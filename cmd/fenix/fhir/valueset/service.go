@@ -11,7 +11,7 @@ import (
 	"github.com/SanteonNL/fenix/models/fhir"
 )
 
-func (s *ValueSetCache) GetValueSet(ctx context.Context, url string) (*fhir.ValueSet, error) {
+func (s *ValueSetService) GetValueSet(ctx context.Context, url string) (*fhir.ValueSet, error) {
 	valueSetID, source := s.parseValueSetURL(url)
 
 	s.log.Debug().
@@ -52,12 +52,12 @@ func (s *ValueSetCache) GetValueSet(ctx context.Context, url string) (*fhir.Valu
 	return valueSet, nil
 }
 
-func (s *ValueSetCache) ValidateCode(ctx context.Context, valueSetURL string, coding *fhir.Coding) (*ValidationResult, error) {
+func (s *ValueSetService) ValidateCode(ctx context.Context, valueSetURL string, coding *fhir.Coding) (*ValidationResult, error) {
 	processedURLs := sync.Map{}
 	return s.validateCodeRecursive(ctx, valueSetURL, coding, &processedURLs)
 }
 
-func (s *ValueSetCache) validateCodeRecursive(ctx context.Context, valueSetURL string, coding *fhir.Coding, processedURLs *sync.Map) (*ValidationResult, error) {
+func (s *ValueSetService) validateCodeRecursive(ctx context.Context, valueSetURL string, coding *fhir.Coding, processedURLs *sync.Map) (*ValidationResult, error) {
 	if _, exists := processedURLs.Load(valueSetURL); exists {
 		return nil, fmt.Errorf("circular reference detected in ValueSet: %s", valueSetURL)
 	}
@@ -125,7 +125,7 @@ func (s *ValueSetCache) validateCodeRecursive(ctx context.Context, valueSetURL s
 	}, nil
 }
 
-func (s *ValueSetCache) validateDirectConcepts(valueSet *fhir.ValueSet, coding *fhir.Coding) *ValidationResult {
+func (s *ValueSetService) validateDirectConcepts(valueSet *fhir.ValueSet, coding *fhir.Coding) *ValidationResult {
 	var codingSystem, codingCode string
 	if coding.System != nil {
 		codingSystem = *coding.System
@@ -154,7 +154,7 @@ func (s *ValueSetCache) validateDirectConcepts(valueSet *fhir.ValueSet, coding *
 	}
 }
 
-func (s *ValueSetCache) parseValueSetURL(url string) (string, ValueSetSource) {
+func (s *ValueSetService) parseValueSetURL(url string) (string, ValueSetSource) {
 	url = strings.TrimPrefix(url, "ValueSet/")
 	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
 		return url, RemoteSource

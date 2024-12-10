@@ -245,3 +245,14 @@ func findColumnIndex(headers []string, name string) int {
 	}
 	return -1
 }
+
+// getStringValue converts a reflect.Value to a string
+func getStringValue(value reflect.Value) string {
+	if value.Kind() == reflect.Ptr {
+		value = value.Elem()
+	}
+	if value.Kind() == reflect.String {
+		return value.String()
+	}
+	return ""
+}

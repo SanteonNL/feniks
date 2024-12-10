@@ -21,7 +21,7 @@ type ConceptMapRepository struct {
 }
 
 // NewConceptMapRepository creates a new ConceptMapRepository.
-func NewConceptMapRepository(log zerolog.Logger, localPath string) *ConceptMapRepository {
+func NewConceptMapRepository(localPath string, log zerolog.Logger) *ConceptMapRepository {
 	return &ConceptMapRepository{
 		log:         log,
 		localPath:   localPath,
