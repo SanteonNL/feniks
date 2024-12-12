@@ -1,9 +1,9 @@
 {
   "originalUrl": "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.1--20241203000000",
+  "lastUpdated": "2024-12-12T11:54:15.5615081+01:00",
   "valueSet": {
     "id": "2.16.840.1.113883.2.4.3.11.60.909.11.1--20241203000000",
     "meta": {
-      "lastUpdated": "2024-12-03T13:48:06.043+01:00",
       "profile": [
         "http://hl7.org/fhir/StructureDefinition/shareablevalueset"
       ]

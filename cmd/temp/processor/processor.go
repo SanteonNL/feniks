@@ -33,7 +33,7 @@ type RowData struct {
 // ProcessorService handles processing of FHIR resources from a data source
 type ProcessorService struct {
 	log                        zerolog.Logger
-	valueSetService            *valueset.ValueSetService
+	valueSetService            *valueset.ValueSetRepository
 	conceptMapService          *conceptmap.ConceptMapService
 	structureDefinitionService *structuredefinition.StructureDefinitionService
 	processedPaths             sync.Map
@@ -58,7 +58,7 @@ type FilterResult struct {
 // NewProcessorService creates a new processor service instance
 func NewProcessorService(
 	log zerolog.Logger,
-	valueSetCache *valueset.ValueSetService,
+	valueSetCache *valueset.ValueSetRepository,
 	conceptMapSvc *conceptmap.ConceptMapService,
 	structDefSvc *structuredefinition.StructureDefinitionService,
 	searchParams map[string]SearchParameter,

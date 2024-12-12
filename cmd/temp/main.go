@@ -114,7 +114,7 @@ func main() {
 	}
 
 	// Initialize the cache
-	cache := valueset.NewValueSetCache("/valuesets", log)
+	cache := valueset.NewValueSetService("/valuesets", log)
 
 	// Create a coding to validate
 	coding := &fhir.Coding{

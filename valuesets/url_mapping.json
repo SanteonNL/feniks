@@ -1,5 +1,0 @@
-{
-  "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.40.2.12.4.1--20200901000000": "decor_nictiz_nl_fhir_ValueSet_2_16_840_1_113883_2_-ef5cff4fa01b.json",
-  "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.1--20241203000000": "decor_nictiz_nl_fhir_ValueSet_2_16_840_1_113883_2_-cd6bd2238b13.json",
-  "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354": "decor_nictiz_nl_fhir_4_0_sansa-_ValueSet_2_16_840_-80f853f3596a.json"
-}

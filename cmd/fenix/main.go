@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/SanteonNL/fenix/cmd/fenix/datasource"
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/valueset"
 	"github.com/SanteonNL/fenix/cmd/fenix/output"
+	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
 )
@@ -50,6 +53,53 @@ func main() {
 	for _, result := range results {
 		for path, rowData := range result {
 			fmt.Printf("Resource Path: %s, Data: %v\n", path, rowData)
+		}
+	}
+
+	// Create the config
+	config := valueset.Config{
+		LocalPath:     "valuesets",      // Directory to store ValueSets
+		DefaultMaxAge: 24 * time.Hour,   // Cache for 24 hours by default
+		HTTPTimeout:   30 * time.Second, // Timeout for remote requests
+	}
+
+	// Create the ValueSet service
+	valuesetService, err := valueset.NewValueSetService(config, log)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to create ValueSet service")
+	}
+
+	ctx := context.Background()
+
+	// Try getting a remote ValueSet
+	remoteValueSet, err := valuesetService.GetValueSet(ctx, "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get remote ValueSet")
+	} else {
+		log.Info().
+			Str("id", *remoteValueSet.Id).
+			Str("url", *remoteValueSet.Url).
+			Msg("Successfully loaded remote ValueSet")
+	}
+
+	// Example: Validate a code against a ValueSet
+	coding := &fhir.Coding{
+		System: ptr("http://example.com/system"),
+		Code:   ptr("CODE123"),
+	}
+
+	result, err := valuesetService.ValidateCode(ctx, "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354", coding)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to validate code")
+	} else {
+		if result.Valid {
+			log.Info().
+				Str("matchedIn", result.MatchedIn).
+				Msg("Code is valid")
+		} else {
+			log.Info().
+				Str("error", result.ErrorMessage).
+				Msg("Code is not valid")
 		}
 	}
 
