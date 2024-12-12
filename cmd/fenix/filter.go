@@ -380,6 +380,7 @@ func (rp *ResourceProcessor) checkSingleToken(field reflect.Value, system, code 
 		fieldType = field.Type().String()
 	}
 
+	// TODO: check if it works also for *fhir.CodeableConcept
 	switch fieldType {
 	case "fhir.CodeableConcept":
 		codings := field.FieldByName("Coding")
