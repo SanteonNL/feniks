@@ -24,12 +24,12 @@ type TranslationResult struct {
 // ConceptMapMetadata contains metadata about a stored ConceptMap
 // ConceptMapMetadata contains metadata about a stored ConceptMap
 type ConceptMapMetadata struct {
-	ID           string
-	Version      string
-	LastUpdated  time.Time
-	SourceSystem string
-	TargetSystem string
-	ConceptMap   *fhir.ConceptMap // Added this field
+	ID          string
+	Version     string
+	LastUpdated time.Time
+	SourceURI   string
+	TargetURI   string
+	ConceptMap  *fhir.ConceptMap
 }
 
 // CSVMapping represents a row in a concept mapping CSV file

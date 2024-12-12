@@ -3,6 +3,7 @@ package fhirpathinfo
 import (
 	"fmt"
 
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/conceptmap"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/searchparameter"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/structuredefinition"
 	"github.com/rs/zerolog"
@@ -12,59 +13,16 @@ import (
 func NewPathInfoService(
 	structDefService *structuredefinition.StructureDefinitionService,
 	searchParamService *searchparameter.SearchParameterService,
+	conceptMapService *conceptmap.ConceptMapService,
 	log zerolog.Logger,
 ) *PathInfoService {
 	return &PathInfoService{
 		structDefService:   structDefService,
 		searchParamService: searchParamService,
+		conceptMapService:  conceptMapService,
 		pathIndex:          make(map[string]*PathInfo),
 		log:                log,
 	}
-}
-
-// BuildIndex creates the unified path index
-func (svc *PathInfoService) BuildIndex() error {
-	svc.pathIndex = make(map[string]*PathInfo)
-
-	// First, process structure definitions for ValueSet bindings
-	structDefs := svc.structDefService.GetAllStructureDefinitions()
-	for _, sd := range structDefs {
-		bindings := svc.structDefService.GetAllPathBindings(sd)
-		for path, valueSet := range bindings {
-			info := svc.getOrCreatePathInfo(path)
-			info.ValueSet = valueSet
-		}
-	}
-
-	// Then, process search parameters using the service method
-	searchTypesMap := svc.searchParamService.GetAllPathSearchTypes()
-	for path, codeMap := range searchTypesMap {
-		info := svc.getOrCreatePathInfo(path)
-		for code, searchType := range codeMap {
-			info.SearchTypes[code] = searchType
-		}
-	}
-
-	// Log summary
-	svc.log.Info().
-		Int("total_paths", len(svc.pathIndex)).
-		Msg("Completed building path index")
-
-	return nil
-}
-
-// getOrCreatePathInfo gets or creates a PathInfo for a path
-func (svc *PathInfoService) getOrCreatePathInfo(path string) *PathInfo {
-	if info, exists := svc.pathIndex[path]; exists {
-		return info
-	}
-
-	info := &PathInfo{
-		Path:        path,
-		SearchTypes: make(map[string]string),
-	}
-	svc.pathIndex[path] = info
-	return info
 }
 
 // GetPathInfo returns complete information for a path
@@ -103,4 +61,76 @@ func (svc *PathInfoService) GetValueSet(path string) (string, error) {
 	}
 
 	return info.ValueSet, nil
+}
+
+// BuildIndex creates the unified path index
+func (svc *PathInfoService) BuildIndex() error {
+	svc.pathIndex = make(map[string]*PathInfo)
+
+	// Process structure definitions for ValueSet bindings
+	structDefs := svc.structDefService.GetAllStructureDefinitions()
+	for _, sd := range structDefs {
+		// First get ValueSet bindings from StructureDefinition service
+		bindings := svc.structDefService.GetAllPathBindings(sd)
+		for path, valueSetURL := range bindings {
+			info := svc.getOrCreatePathInfo(path)
+			info.ValueSet = valueSetURL
+
+			// Then find all ConceptMaps that reference this ValueSet
+			conceptMaps, err := svc.conceptMapService.GetConceptMapsByValuesetURL()(valueSetURL)
+			if err != nil {
+				svc.log.Warn().
+					Err(err).
+					Str("path", path).
+					Str("valueSet", valueSetURL).
+					Msg("Failed to get ConceptMaps for ValueSet")
+				continue
+			}
+			info.ConceptMaps = conceptMaps
+		}
+	}
+
+	// Process search parameters
+	searchTypesMap := svc.searchParamService.GetAllPathSearchTypes()
+	for path, codeMap := range searchTypesMap {
+		info := svc.getOrCreatePathInfo(path)
+		for code, searchType := range codeMap {
+			info.SearchTypes[code] = searchType
+		}
+	}
+
+	svc.log.Info().
+		Int("total_paths", len(svc.pathIndex)).
+		Msg("Completed building path index")
+
+	return nil
+}
+
+// getOrCreatePathInfo gets or creates a PathInfo for a path
+func (svc *PathInfoService) getOrCreatePathInfo(path string) *PathInfo {
+	if info, exists := svc.pathIndex[path]; exists {
+		return info
+	}
+
+	info := &PathInfo{
+		Path:        path,
+		ConceptMaps: make([]conceptmap.ConceptMapMetadata, 0),
+		SearchTypes: make(map[string]string),
+	}
+	svc.pathIndex[path] = info
+	return info
+}
+
+// GetConceptMaps returns all ConceptMaps that reference this field's ValueSet
+func (svc *PathInfoService) GetConceptMaps(path string) ([]conceptmap.ConceptMapMetadata, error) {
+	info, err := svc.GetPathInfo(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(info.ConceptMaps) == 0 {
+		return nil, fmt.Errorf("no ConceptMaps found referencing ValueSet %s for path: %s", info.ValueSet, path)
+	}
+
+	return info.ConceptMaps, nil
 }

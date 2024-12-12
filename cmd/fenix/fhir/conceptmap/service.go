@@ -26,9 +26,6 @@ func NewConceptMapService(repo *ConceptMapRepository, log zerolog.Logger) *Conce
 }
 
 // GetConceptMapForValueSet retrieves the ConceptMap for a given ValueSet URL.
-func (svc *ConceptMapService) GetConceptMapsByValuesetURL(valueSetURL string) ([]*fhir.ConceptMap, error) {
-	return svc.repo.GetConceptMapsByValuesetURL(valueSetURL)
-}
 
 func stringPtr(s string) *string {
 	return &s
@@ -135,6 +132,18 @@ func (s *ConceptMapService) SaveConceptMap(outputPath string, cm *fhir.ConceptMa
 func getDisplayValue(display *string) string {
 	if display != nil {
 		return *display
+	}
+	return ""
+}
+
+func (svc *ConceptMapService) GetConceptMapsByValuesetURL(valueSetURL string) ([]*fhir.ConceptMap, error) {
+	return svc.repo.GetConceptMapsByValuesetURL(valueSetURL)
+}
+
+// Helper function to extract version from ConceptMap
+func getVersionFromConceptMap(cm *fhir.ConceptMap) string {
+	if cm.Version != nil {
+		return *cm.Version
 	}
 	return ""
 }

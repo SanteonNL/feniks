@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/SanteonNL/fenix/cmd/fenix/datasource"
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/conceptmap"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/valueset"
 	"github.com/SanteonNL/fenix/cmd/fenix/output"
 	"github.com/SanteonNL/fenix/models/fhir"
@@ -56,6 +57,33 @@ func main() {
 		}
 	}
 
+	// Initialize ConceptMap repository and service
+	conceptMapRepo := conceptmap.NewConceptMapRepository("config/conceptmaps/fhir", log)
+	err = conceptMapRepo.LoadConceptMaps()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load ConceptMaps")
+	}
+
+	conceptMapService := conceptmap.NewConceptMapService(conceptMapRepo, log)
+
+	// Example: Find ConceptMaps for a specific ValueSet
+	valueSetURL := "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354"
+
+	conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
+
+	conceptMaps, err := conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get ConceptMaps")
+	} else {
+		for _, conceptMap := range conceptMaps {
+			log.Info().
+				Str("id", *conceptMap.Id).
+				Str("name", *conceptMap.Name).
+				Msg("Found ConceptMap")
+		}
+
+	}
+
 	// Create the config
 	config := valueset.Config{
 		LocalPath:     "valuesets",      // Directory to store ValueSets
@@ -84,8 +112,8 @@ func main() {
 
 	// Example: Validate a code against a ValueSet
 	coding := &fhir.Coding{
-		System: ptr("http://example.com/system"),
-		Code:   ptr("CODE123"),
+		System: ptr("http://snomed.info/sct"),
+		Code:   ptr("22762002"),
 	}
 
 	result, err := valuesetService.ValidateCode(ctx, "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354", coding)
