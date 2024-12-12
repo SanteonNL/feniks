@@ -49,10 +49,10 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to read query from file")
 	}
 	resourceType := "Observation"
+	//resourceType := "Encounter"
+	//resourceType := "Patient"
+	//resourceType := "Questionnaire"
 	dataSource := datasource.NewSQLDataSource(db, query, resourceType, log)
-	//dataSource := NewSQLDataSource(db, query, "Encounter", log)
-	//dataSource := NewSQLDataSource(db, query, "Observation", log)
-	//dataSource := NewSQLDataSource(db, query, "Patient", log)
 	// Setup search parameters
 	searchParams := SearchParameterMap{
 		// "Patient.identifier": {

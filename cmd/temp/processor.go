@@ -9,7 +9,6 @@ import (
 
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type SearchParameterMap map[string]SearchParameter
@@ -319,8 +318,11 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 			Str("fieldName", fieldName).
 			Msg("Checking field type")
 
-		// Handle Coding and CodeableConcept fields
-		if strings.Contains(fieldType, "Coding") || strings.Contains(fieldType, "CodeableConcept") {
+		// Handle both direct Coding fields and CodeableConcept fields
+		// TODO add Quantity handling here also?
+		if strings.Contains(fieldType, "Coding") ||
+			strings.Contains(fieldType, "CodeableConcept") ||
+			strings.Contains(fieldType, "Quantity") {
 
 			codingPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
 			rp.processedPaths[codingPath] = true
@@ -345,16 +347,28 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 					continue
 				}
 			} else {
-				// Handle regular Coding fields
+				// Handle regular Coding and Quantity fields
+				// TODO Make sure that Quantity works while it has unit instead of display and it does not need to have a code
+				// Although you might maybe only want to map system?
+				// However the setup of fhir conceptmaps suggests mapping codes
+				// see https://chatgpt.com/c/6728b3fd-1ef0-8001-9278-4737541c9a7a
 				for _, codingRow := range codingRows {
 					if codingRow.ParentID == row.ID {
-						if err := rp.setCodingFromRow(codingPath, codingPath, field, fieldName, codingRow, processedFields); err != nil {
-							return nil, err
+						if strings.Contains(fieldType, "Quantity") {
+							if err := rp.setCodingOrQuantityFromRow(codingPath, codingPath, field, fieldName, codingRow, processedFields, false); err != nil {
+								return nil, err
+							}
+						}
+						if strings.Contains(fieldType, "Coding") {
+							if err := rp.setCodingOrQuantityFromRow(codingPath, codingPath, field, fieldName, codingRow, processedFields, true); err != nil {
+								return nil, err
+							}
 						}
 					}
 				}
 
 				// After setting all codings, check filter at the parent level
+				// TODO check if quantity and filter work well together
 				if filterResult, err := rp.checkFilter(structPath, structValue); err != nil {
 					return nil, err
 				} else if !filterResult.Passed {
@@ -559,8 +573,7 @@ func (rp *ResourceProcessor) populateCodeableConcept(conceptValue reflect.Value,
 					Str("parentID", row.ID).
 					Interface("codingData", codingRow.Data).
 					Msg("Processing coding row")
-
-				if err := rp.setCodingFromRow(path, codingPath, codingField, "Coding", codingRow, processedFields); err != nil {
+				if err := rp.setCodingOrQuantityFromRow(path, codingPath, codingField, "Coding", codingRow, processedFields, true); err != nil {
 					return fmt.Errorf("failed to set coding: %w", err)
 				}
 			}
@@ -584,69 +597,118 @@ func (rp *ResourceProcessor) populateCodeableConcept(conceptValue reflect.Value,
 	return nil
 }
 
-// Modified setCodingFromRow to add more debug logging
-func (rp *ResourceProcessor) setCodingFromRow(valuesetBindingPath string, structPath string, field reflect.Value, fieldName string, row RowData, processedFields map[string]bool) error {
+// Unified setCodingOrQuantityFromRow to handle both Coding and Quantity
+func (rp *ResourceProcessor) setCodingOrQuantityFromRow(valuesetBindingPath string, structPath string, field reflect.Value, fieldName string, row RowData, processedFields map[string]bool, isCoding bool) error {
 	rp.log.Debug().
 		Str("valuesetBindingPath", valuesetBindingPath).
 		Str("structPath", structPath).
 		Str("fieldName", fieldName).
 		Interface("rowData", row.Data).
-		Msg("Starting Coding field processing")
+		Msg("Starting Coding or Quantity field processing")
 
-	var code, display, system string
+	// Extract field values
+	fieldValues := rp.extractFieldValues(row, processedFields)
 
-	// Extract coding fields
+	code, display, system := fieldValues["code"], fieldValues["display"], fieldValues["system"]
+	rp.log.Debug().Str("code", code).Str("display", display).Str("system", system).Msg("Found field values")
+
+	var newValue interface{}
+
+	if isCoding {
+		if code == "" && system == "" {
+			rp.log.Debug().Msg("No code or system found in row data")
+			return nil
+		}
+		// Create Coding
+		coding := fhir.Coding{
+			Code:    stringPtr(code),
+			Display: stringPtr("mapped display"),
+			System:  stringPtr(system),
+		}
+		// Perform concept mapping for Coding
+		if mappedCode, _, err := performConceptMapping(valuesetBindingPath, code, false, rp.log); err == nil && mappedCode != "" {
+			coding.Code = &mappedCode
+		}
+
+		// Convert newValue to a reflect.Value if needed to be able to set both Coding and *Coding
+		if field.Type().Kind() == reflect.Ptr {
+			newValue = &coding
+		} else {
+			newValue = coding
+		}
+
+	} else {
+		// Create Quantity
+		quantity := fhir.Quantity{
+			Value:  jsonNumberPtr(fieldValues["value"]),
+			Unit:   stringPtr("mapped system"),
+			System: stringPtr(system),
+			Code:   stringPtr(code),
+		}
+		// Perform concept mapping for Quantity
+		// TODO or check system as well?
+		if code != "" {
+			if mappedCode, _, err := performConceptMapping(valuesetBindingPath, code, false, rp.log); err == nil && mappedCode != "" {
+				quantity.Code = &mappedCode
+			}
+		}
+		// Convert newValue to a reflect.Value if needed to be able to set both Quantity and *Quantity
+		if field.Type().Kind() == reflect.Ptr {
+			newValue = &quantity
+		} else {
+			newValue = quantity
+		}
+	}
+
+	// Set the field
+	rp.setCodingOrQuantityField(field, newValue, code, system)
+
+	return nil
+}
+
+// extractFieldValues extracts key values from row data based on suffixes
+func (rp *ResourceProcessor) extractFieldValues(row RowData, processedFields map[string]bool) map[string]string {
+	fieldValues := make(map[string]string)
+
 	for key, value := range row.Data {
 		keyLower := strings.ToLower(key)
 		strValue := fmt.Sprint(value)
 
+		// Handle byte slice to string conversion if needed
+		if byteSlice, ok := value.([]byte); ok {
+			strValue = string(byteSlice)
+		}
+
 		switch {
 		case strings.HasSuffix(keyLower, "code"):
-			code = strValue
+			fieldValues["code"] = strValue
 			processedFields[key] = true
-			rp.log.Debug().Str("code", code).Msg("Found code")
+			rp.log.Debug().Str("code", strValue).Msg("Found code")
 		case strings.HasSuffix(keyLower, "display"):
-			display = strValue
+			fieldValues["display"] = strValue
 			processedFields[key] = true
-			rp.log.Debug().Str("display", display).Msg("Found display")
+			rp.log.Debug().Str("display", strValue).Msg("Found display")
 		case strings.HasSuffix(keyLower, "system"):
-			system = strValue
+			fieldValues["system"] = strValue
 			processedFields[key] = true
-			rp.log.Debug().Str("system", system).Msg("Found system")
+			rp.log.Debug().Str("system", strValue).Msg("Found system")
+		case strings.HasSuffix(keyLower, "unit"):
+			fieldValues["unit"] = strValue
+			processedFields[key] = true
+			rp.log.Debug().Str("unit", strValue).Msg("Found unit")
+		case strings.HasSuffix(keyLower, "value"):
+			fieldValues["value"] = strValue
+			processedFields[key] = true
+			rp.log.Debug().Str("value", strValue).Msg("Found value")
 		}
 	}
+	return fieldValues
+}
 
-	if code == "" && system == "" {
-		rp.log.Debug().Msg("No code or system found in row data")
-		return nil
-	}
+// setCodingOrQuantityField sets a single field or appends to a slice if needed
+func (rp *ResourceProcessor) setCodingOrQuantityField(field reflect.Value, newValue interface{}, code string, system string) {
+	// If the field is expecting a pointer, ensure newVal is a pointer as well
 
-	// Create the Coding
-	coding := fhir.Coding{
-		Code:    stringPtr(code),
-		Display: stringPtr("mapped display"),
-		System:  stringPtr(system),
-	}
-
-	// Apply concept mapping for Coding (including CodeableConcept)
-	// TODO: Quantity handling
-
-	rp.log.Debug().Msgf("FHIR valuesetBindingPath to determine ValueSet: %s", valuesetBindingPath)
-
-	// TODO: instead of replacing the old coding add the new coding to the slice
-	// Perform concept mapping using the shared function
-	// TODO: check if path for valuesetBindingPath is correct always or als needs an alternative sometimes (as is the case with codes)
-	mappedCode, _, err := performConceptMapping(valuesetBindingPath, code, false, rp.log)
-	if err != nil {
-		return err
-	}
-	if mappedCode != "" {
-		log.Debug().Msgf("Mapped code: %s", mappedCode)
-		coding.Code = &mappedCode
-	}
-	rp.log.Debug().Msgf("coding.Code post-concept mapping attempt(unchanged if mapping failed) %v", *coding.Code)
-
-	// Handle slice vs single coding field
 	if field.Kind() == reflect.Slice {
 		var newSlice reflect.Value
 		if field.IsNil() {
@@ -658,31 +720,55 @@ func (rp *ResourceProcessor) setCodingFromRow(valuesetBindingPath string, struct
 		// Check for duplicates
 		exists := false
 		for i := 0; i < newSlice.Len(); i++ {
-			existing := newSlice.Index(i).Interface().(fhir.Coding)
-			if (existing.Code != nil && coding.Code != nil && *existing.Code == *coding.Code) &&
-				(existing.System != nil && coding.System != nil && *existing.System == *coding.System) {
+			existing := newSlice.Index(i).Interface()
+			if isDuplicate(existing, newValue) {
 				exists = true
 				break
 			}
 		}
 
 		if !exists {
-			newSlice = reflect.Append(newSlice, reflect.ValueOf(coding))
+			newSlice = reflect.Append(newSlice, reflect.ValueOf(newValue))
 			field.Set(newSlice)
 			rp.log.Debug().
 				Str("code", code).
 				Str("system", system).
-				Msg("Added new coding to slice")
+				Msg("Added new entry to slice")
 		}
 	} else {
-		field.Set(reflect.ValueOf(coding))
+		field.Set(reflect.ValueOf(newValue))
 		rp.log.Debug().
 			Str("code", code).
 			Str("system", system).
-			Msg("Set single coding field")
+			Msg("Set single field entry")
 	}
+}
 
-	return nil
+// Helper to check for duplicate coding or quantity.
+// As slice elements are not pointers, only Coding and Quantity are checked
+func isDuplicate(existing, newValue interface{}) bool {
+	switch e := existing.(type) {
+	case fhir.Coding:
+		if n, ok := newValue.(fhir.Coding); ok {
+			return e.Code != nil && n.Code != nil && *e.Code == *n.Code &&
+				e.System != nil && n.System != nil && *e.System == *n.System
+		}
+	case fhir.Quantity:
+		if n, ok := newValue.(fhir.Quantity); ok {
+			return e.Code != nil && n.Code != nil && *e.Code == *n.Code &&
+				e.System != nil && n.System != nil && *e.System == *n.System
+		}
+	}
+	return false
+}
+
+// Helper function to set a json.Number pointer if the value is not empty
+func jsonNumberPtr(s string) *json.Number {
+	if s == "" {
+		return nil
+	}
+	num := json.Number(s)
+	return &num
 }
 
 // Helper function to set a string pointer if the value is not empty
