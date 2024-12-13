@@ -1,6 +1,0 @@
-{
-  "https://decor.nictiz.nl/fhir/4.0/san-gen-/ValueSet/2.16.840.1.113883.2.4.3.11.60.124.11.115--20240819114333?_format=json": "decor_nictiz_nl_fhir_4_0_san-gen-_ValueSet_2_16_84-716f0144fba6.json",
-  "https://decor.nictiz.nl/fhir/4.0/san-gen-/ValueSet/2.16.840.1.113883.2.4.3.11.60.124.11.127--20240827124549?_format=json": "decor_nictiz_nl_fhir_4_0_san-gen-_ValueSet_2_16_84-0975c4040e7d.json",
-  "https://decor.nictiz.nl/fhir/4.0/zib2020bbr-/ValueSet/2.16.840.1.113883.2.4.3.11.60.40.2.8.2.3--20200901000000?_format=json": "decor_nictiz_nl_fhir_4_0_zib2020bbr-_ValueSet_2_16-c6f288afabe2.json",
-  "https://server.fire.ly/r4/ValueSet/mii-vs-prozedur-prozeduren-snomedct": "server_fire_ly_r4_ValueSet_mii-vs-prozedur-prozedu-9e3fbc401f43.json"
-}
