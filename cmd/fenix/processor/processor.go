@@ -36,7 +36,7 @@ func NewProcessorService(
 }
 
 // ProcessResources processes resources with filtering
-func (p *ProcessorService) ProcessResources(ctx context.Context, ds datasource.DataSourceService, patientID string, filter *Filter) ([]interface{}, error) {
+func (p *ProcessorService) ProcessResources(ctx context.Context, ds *datasource.DataSourceService, patientID string, filter *Filter) ([]interface{}, error) {
 	results, err := ds.ReadResources("Patient", patientID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read resources: %w", err)
@@ -49,6 +49,8 @@ func (p *ProcessorService) ProcessResources(ctx context.Context, ds datasource.D
 			p.log.Error().Err(err).Msg("Error creating resource")
 			continue
 		}
+
+		p.log.Info().Msgf("Processing resource: %v", result)
 
 		passed, err := p.populateAndFilter(ctx, resource, result, filter)
 		if err != nil {
