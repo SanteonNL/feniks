@@ -84,6 +84,27 @@ func (p *ProcessorService) populateAndFilterField(ctx context.Context, field ref
 		return true, nil
 	}
 
+	// Handle special FHIR types first
+	switch field.Type().String() {
+	case "fhir.CodeableConcept", "*fhir.CodeableConcept":
+		if err := p.setCodeableConceptField(field, path, rows); err != nil {
+			return false, err
+		}
+		if filter != nil && searchType != "" {
+			return p.checkFilter(ctx, field, path, searchType, filter)
+		}
+		return true, nil
+
+	case "fhir.Coding", "*fhir.Coding":
+		if err := p.setCodingField(field, path, rows); err != nil {
+			return false, err
+		}
+		if filter != nil && searchType != "" {
+			return p.checkFilter(ctx, field, path, searchType, filter)
+		}
+		return true, nil
+	}
+
 	switch field.Kind() {
 	case reflect.Ptr:
 		if field.IsNil() {
@@ -326,6 +347,157 @@ func (p *ProcessorService) setBasicField(field reflect.Value, value interface{})
 	}
 
 	return nil
+}
+
+func (p *ProcessorService) setCodeableConceptField(field reflect.Value, path string, rows []datasource.RowData) error {
+	// Initialize field if needed
+	if field.Kind() == reflect.Ptr {
+		if field.IsNil() {
+			field.Set(reflect.New(field.Type().Elem()))
+		}
+		field = field.Elem()
+	}
+
+	concept := field.Addr().Interface().(*fhir.CodeableConcept)
+
+	// Group rows by their concept ID
+	conceptRows := make(map[string][]datasource.RowData)
+	for _, row := range rows {
+		conceptID := row.ID
+		if row.ParentID != "" {
+			conceptID = row.ParentID
+		}
+		conceptRows[conceptID] = append(conceptRows[conceptID], row)
+	}
+
+	// Process each group of rows
+	for _, rowGroup := range conceptRows {
+		// Process text field
+		for _, row := range rowGroup {
+			if textValue, ok := row.Data["text"]; ok {
+				concept.Text = stringPtr(fmt.Sprint(textValue))
+				break
+			}
+		}
+
+		// Initialize Coding slice if needed
+		if concept.Coding == nil {
+			concept.Coding = make([]fhir.Coding, 0)
+		}
+
+		// Process coding data
+		for _, row := range rowGroup {
+			coding, err := p.createCodingFromRow(row, path)
+			if err != nil {
+				return err
+			}
+			if coding != nil && !p.hasDuplicateCoding(concept.Coding, *coding) {
+				concept.Coding = append(concept.Coding, *coding)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (p *ProcessorService) setCodingField(field reflect.Value, path string, rows []datasource.RowData) error {
+	// Handle single Coding vs slice of Codings
+	if field.Kind() == reflect.Slice {
+		// Initialize slice if needed
+		if field.IsNil() {
+			field.Set(reflect.MakeSlice(field.Type(), 0, len(rows)))
+		}
+
+		// Process each row into a Coding
+		for _, row := range rows {
+			coding, err := p.createCodingFromRow(row, path)
+			if err != nil {
+				return err
+			}
+			if coding != nil {
+				// Convert to the right type (pointer or value)
+				var codingValue reflect.Value
+				if field.Type().Elem().Kind() == reflect.Ptr {
+					codingValue = reflect.ValueOf(coding)
+				} else {
+					codingValue = reflect.ValueOf(*coding)
+				}
+				field.Set(reflect.Append(field, codingValue))
+			}
+		}
+	} else {
+		// Handle single Coding
+		if len(rows) > 0 {
+			coding, err := p.createCodingFromRow(rows[0], path)
+			if err != nil {
+				return err
+			}
+			if coding != nil {
+				if field.Kind() == reflect.Ptr {
+					if field.IsNil() {
+						field.Set(reflect.New(field.Type().Elem()))
+					}
+					field.Elem().Set(reflect.ValueOf(*coding))
+				} else {
+					field.Set(reflect.ValueOf(*coding))
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (p *ProcessorService) createCodingFromRow(row datasource.RowData, path string) (*fhir.Coding, error) {
+	var code, system, display string
+
+	// Extract values from row data
+	for key, value := range row.Data {
+		strValue := fmt.Sprint(value)
+		switch {
+		case strings.HasSuffix(strings.ToLower(key), "code"):
+			code = strValue
+		case strings.HasSuffix(strings.ToLower(key), "system"):
+			system = strValue
+		case strings.HasSuffix(strings.ToLower(key), "display"):
+			display = strValue
+		}
+	}
+
+	// Skip if no code or system
+	if code == "" && system == "" {
+		return nil, nil
+	}
+
+	// // Perform concept mapping if needed
+	// if mappedCode, err := p.pathInfoSvc.GetMappedCode(path, code); err == nil && mappedCode != "" {
+	// 	code = mappedCode
+	// }
+
+	return &fhir.Coding{
+		Code:    stringPtr(code),
+		System:  stringPtr(system),
+		Display: stringPtr(display),
+	}, nil
+}
+
+func (p *ProcessorService) hasDuplicateCoding(existingCodings []fhir.Coding, newCoding fhir.Coding) bool {
+	for _, existing := range existingCodings {
+		if (existing.Code == nil && newCoding.Code == nil ||
+			existing.Code != nil && newCoding.Code != nil && *existing.Code == *newCoding.Code) &&
+			(existing.System == nil && newCoding.System == nil ||
+				existing.System != nil && newCoding.System != nil && *existing.System == *newCoding.System) {
+			return true
+		}
+	}
+	return false
+}
+
+func stringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // Helper function to check if type has Code method
