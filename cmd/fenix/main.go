@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,8 +10,12 @@ import (
 
 	"github.com/SanteonNL/fenix/cmd/fenix/datasource"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/conceptmap"
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/fhirpathinfo"
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/searchparameter"
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/structuredefinition"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/valueset"
 	"github.com/SanteonNL/fenix/cmd/fenix/output"
+	"github.com/SanteonNL/fenix/cmd/fenix/processor"
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
@@ -69,16 +74,15 @@ func main() {
 
 	log.Info().Msg("Successfully completed conversion process")
 
-	service := datasource.NewDataSourceService(db, log)
-
+	dataSourceService := datasource.NewDataSourceService(db, log)
 	// Load queries
-	err = service.LoadQueryFile("queries/hix/flat/patient_1.sql")
+	err = dataSourceService.LoadQueryFile("queries/hix/flat/patient_1.sql")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load query file")
 	}
 
 	// Read resources
-	results, err := service.ReadResources("Patient", "12345")
+	results, err := dataSourceService.ReadResources("Patient", "12345")
 	if err != nil {
 		log.Printf("Error: %v", err)
 	}
@@ -151,6 +155,46 @@ func main() {
 			log.Info().
 				Str("error", result.ErrorMessage).
 				Msg("Code is not valid")
+		}
+	}
+
+	// Initialize repository for StructureDefinitions
+	structureDefRepo := structuredefinition.NewStructureDefinitionRepository(log)
+
+	// Load existing StructureDefinitions
+	if err := structureDefRepo.LoadStructureDefinitions("profiles\\sim"); err != nil {
+		log.Error().Err(err).Msg("Failed to load existing StructureDefinitions")
+		os.Exit(1)
+	}
+
+	// Initialize StructureDefinition service with the repository
+	structureDefService := structuredefinition.NewStructureDefinitionService(structureDefRepo, log)
+
+	// Initialize repository for SearchParameters
+	searchParamRepo := searchparameter.NewSearchParameterRepository(log)
+	searchParamRepo.LoadSearchParametersFromFile("searchParameter\\search-parameter.json")
+
+	// Initialize SearchParameter service with the repository
+	searchParamService := searchparameter.NewSearchParameterService(searchParamRepo, log)
+
+	pathInfoService := fhirpathinfo.NewPathInfoService(structureDefService, searchParamService, conceptMapService, log)
+	processorService := processor.NewProcessorService(log, pathInfoService, valuesetService, conceptMapService)
+
+	// Process resources
+	filter := processor.Filter{
+		Code:  "gender",
+		Value: "male",
+	}
+
+	resources, err := processorService.ProcessResources(ctx, dataSourceService, "12", &filter)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to process resources")
+
+	}
+
+	for _, resource := range resources {
+		if jsonData, err := json.MarshalIndent(resource, "", "  "); err == nil {
+			fmt.Println(string(jsonData))
 		}
 	}
 
