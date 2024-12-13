@@ -4,6 +4,7 @@ SELECT
     '' AS resource_id,
     'Patient' AS "fhir_path",
     'adsfasdf0' AS id,
+    'male' AS "gender",
     'generated' AS "text.status",
     '<div xmlns="http://www.w3.org/1999/xhtml">Patient information</div>' AS "text.div",
     'true' AS "active",
