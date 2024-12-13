@@ -12,7 +12,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// TODO: maak cache een aparte service? (together with valuesetcache?)
 // ConceptMapRepository handles loading and storing ConceptMap resources.
+// More or less equivalentt to ValueSetService, but nested within ConceptMapservice
+// to enable using different repositories, for example per hospital.
+// TODO: Add urlToPath as in ValueSetService, instead of collecting all conceptmaps
+// in conceptMaps. Then only the relevant conceptmaps for a model/valueset can be
+// loaded..
 type ConceptMapRepository struct {
 	log         zerolog.Logger
 	localPath   string

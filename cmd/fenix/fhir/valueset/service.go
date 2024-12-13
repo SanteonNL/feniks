@@ -37,6 +37,7 @@ func NewValueSetService(config Config, log zerolog.Logger) (*ValueSetService, er
 		return nil, fmt.Errorf("failed to create local storage directory: %w", err)
 	}
 
+	// TODO: maak cache een aparte service? (together with conceptmapcache?)
 	service := &ValueSetService{
 		cache:         make(map[string]*CachedValueSet),
 		urlToPath:     make(map[string]URLMapping),
