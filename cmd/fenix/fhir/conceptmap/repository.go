@@ -117,23 +117,23 @@ func (repo *ConceptMapRepository) GetConceptMap(key string) (*fhir.ConceptMap, e
 }
 
 // GetConceptMapsByValuesetURL retrieves all ConceptMaps with a target URI matching the input URL.
-func (repo *ConceptMapRepository) GetConceptMapsByValuesetURL(valueSetURL string) ([]*fhir.ConceptMap, error) {
-	var matchingConceptMaps []*fhir.ConceptMap
+func (repo *ConceptMapRepository) GetConceptMapsByValuesetURL(valueSetURL string) ([]string, error) {
+	var matchingConceptMapURLs []string
 
 	repo.cache.Range(func(key, value interface{}) bool {
 		conceptMap := value.(*fhir.ConceptMap)
 		if conceptMap.TargetUri != nil && *conceptMap.TargetUri == valueSetURL {
-			matchingConceptMaps = append(matchingConceptMaps, conceptMap)
+			matchingConceptMapURLs = append(matchingConceptMapURLs, *conceptMap.TargetUri)
 		}
 		return true
 	})
 
-	if len(matchingConceptMaps) == 0 {
+	if len(matchingConceptMapURLs) == 0 {
 		repo.log.Warn().Str("valueSetURL", valueSetURL).Msg("No ConceptMaps found for ValueSet URL")
 		return nil, fmt.Errorf("no ConceptMaps found for ValueSet URL: %s", valueSetURL)
 	}
 
-	return matchingConceptMaps, nil
+	return matchingConceptMapURLs, nil
 }
 
 // Helper function to get the file name for a ConceptMap by ID or URL.

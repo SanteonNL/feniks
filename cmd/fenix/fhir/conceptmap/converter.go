@@ -3,8 +3,11 @@ package conceptmap
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,8 +29,47 @@ func NewConceptMapConverter(log zerolog.Logger, conceptMapService *ConceptMapSer
 	}
 }
 
-// ConvertCSVToFHIR converts a CSV file to a FHIR ConceptMap
-func (c *ConceptMapConverter) ConvertCSVToFHIR(reader io.Reader, name string) (*fhir.ConceptMap, error) {
+// ConvertFolderToFHIR converts all CSV files in a folder to FHIR ConceptMaps
+func (c *ConceptMapConverter) ConvertFolderToFHIR(inputFolder string, repository *ConceptMapRepository, usePrefix bool) error {
+	files, err := os.ReadDir(inputFolder)
+	if err != nil {
+		return fmt.Errorf("failed to read input directory: %w", err)
+	}
+
+	var conversionErrors []string
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(strings.ToLower(file.Name()), ".csv") {
+			continue
+		}
+
+		filePath := filepath.Join(inputFolder, file.Name())
+		csvFile, err := os.Open(filePath)
+		if err != nil {
+			conversionErrors = append(conversionErrors, fmt.Sprintf("failed to open %s: %v", file.Name(), err))
+			continue
+		}
+
+		err = c.ConvertCSVToFHIRAndSave(csvFile, file.Name(), repository, usePrefix)
+		csvFile.Close()
+		if err != nil {
+			conversionErrors = append(conversionErrors, fmt.Sprintf("failed to convert %s: %v", file.Name(), err))
+			continue
+		}
+
+		c.conceptMapService.log.Info().
+			Str("file", file.Name()).
+			Msg("Successfully converted CSV to ConceptMap")
+	}
+
+	if len(conversionErrors) > 0 {
+		return fmt.Errorf("encountered errors during conversion:\n%s", strings.Join(conversionErrors, "\n"))
+	}
+
+	return nil
+}
+
+// ConvertCSVToFHIRAndSave converts a CSV file to a FHIR ConceptMap and saves it to the repository's converted folder
+func (c *ConceptMapConverter) ConvertCSVToFHIRAndSave(reader io.Reader, csvName string, repository *ConceptMapRepository, usePrefix bool) error {
 	csvReader := csv.NewReader(reader)
 	csvReader.Comma = ';'
 	csvReader.TrimLeadingSpace = true
@@ -35,18 +77,21 @@ func (c *ConceptMapConverter) ConvertCSVToFHIR(reader io.Reader, name string) (*
 	// Read and validate headers
 	headers, err := csvReader.Read()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read headers: %w", err)
+		return fmt.Errorf("failed to read headers: %w", err)
 	}
 
 	indices := getColumnIndices(headers)
 	if !indices.areValid() {
-		return nil, fmt.Errorf("required columns not found in CSV")
+		return fmt.Errorf("required columns not found in CSV")
 	}
+
+	// Remove .csv extension if present
+	baseName := strings.TrimSuffix(csvName, filepath.Ext(csvName))
 
 	// Create initial ConceptMap
 	conceptMap := c.conceptMapService.CreateConceptMap(
-		fmt.Sprintf("%s_%s", name, time.Now().Format("20060102")),
-		name,
+		fmt.Sprintf("%s_%s", baseName, time.Now().Format("20060102")),
+		baseName,
 		"", // Will be populated from first row
 		"", // Will be populated from first row
 	)
@@ -55,36 +100,107 @@ func (c *ConceptMapConverter) ConvertCSVToFHIR(reader io.Reader, name string) (*
 	groupMap := make(map[string]*fhir.ConceptMapGroup)
 
 	// Process each row
+	var firstRowProcessed bool
 	for {
 		row, err := csvReader.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to read row: %w", err)
+			return fmt.Errorf("failed to read row: %w", err)
 		}
 
 		mapping, err := c.extractMapping(row, indices)
 		if err != nil {
-			return nil, fmt.Errorf("failed to extract mapping from row: %w", err)
+			return fmt.Errorf("failed to extract mapping from row: %w", err)
 		}
 
 		// Update ValueSet URI from first valid row
-		if conceptMap.TargetUri == nil && mapping.ValueSetURI != "" {
+		if !firstRowProcessed && mapping.ValueSetURI != "" {
 			uri := mapping.ValueSetURI
+			if usePrefix {
+				// Add prefix to the last segment of the URI
+				segments := strings.Split(uri, "/")
+				if len(segments) > 0 {
+					lastIndex := len(segments) - 1
+					segments[lastIndex] = "conceptmap_converted_" + segments[lastIndex]
+					uri = strings.Join(segments, "/")
+				}
+			}
 			conceptMap.TargetUri = &uri
+			firstRowProcessed = true
 		}
 
 		// Add mapping to ConceptMap
 		if err := c.addMappingToConceptMap(conceptMap, mapping, groupMap); err != nil {
-			return nil, fmt.Errorf("failed to add mapping: %w", err)
+			return fmt.Errorf("failed to add mapping: %w", err)
 		}
 	}
 
 	// Convert groupMap to final groups slice
 	conceptMap.Group = c.finalizeGroups(groupMap)
 
-	return conceptMap, nil
+	// Create the fhir/converted directory within the repository's local path
+	outputPath := filepath.Join(repository.localPath, "fhir", "converted")
+	if err := os.MkdirAll(outputPath, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Save with original CSV name (minus extension) plus .json
+	outputFile := filepath.Join(outputPath, baseName+".json")
+	if err := c.conceptMapService.SaveConceptMap(outputFile, conceptMap); err != nil {
+		return fmt.Errorf("failed to save ConceptMap: %w", err)
+	}
+
+	// Add to repository cache
+	if conceptMap.Id != nil {
+		repository.cache.Store(*conceptMap.Id, conceptMap)
+	}
+	if conceptMap.TargetUri != nil {
+		repository.cache.Store(*conceptMap.TargetUri, conceptMap)
+	}
+
+	return nil
+}
+
+// ConvertCSVToFHIR maintains backwards compatibility while using the repository structure
+func (c *ConceptMapConverter) ConvertCSVToFHIR(reader io.Reader, name string) (*fhir.ConceptMap, error) {
+
+	// Create a temporary repository
+	tempDir, err := os.MkdirTemp("", "conceptmap_*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tempRepo := NewConceptMapRepository(tempDir, c.conceptMapService.log)
+
+	if err := c.ConvertCSVToFHIRAndSave(reader, name, tempRepo, false); err != nil {
+		return nil, err
+	}
+
+	// Read the saved file
+	convertedPath := filepath.Join(tempDir, "fhir", "converted")
+	files, err := os.ReadDir(convertedPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read converted directory: %w", err)
+	}
+
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no ConceptMap file was created")
+	}
+
+	data, err := os.ReadFile(filepath.Join(convertedPath, files[0].Name()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ConceptMap file: %w", err)
+	}
+
+	var conceptMap fhir.ConceptMap
+	if err := json.Unmarshal(data, &conceptMap); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ConceptMap: %w", err)
+	}
+
+	return &conceptMap, nil
 }
 
 // extractMapping creates a CSVMapping from a CSV row

@@ -18,7 +18,7 @@ type PathInfoService struct {
 // PathInfo represents complete path information
 type PathInfo struct {
 	Path        string
-	ValueSet    string                          // ValueSet URL from StructureDefinition
-	ConceptMaps []conceptmap.ConceptMapMetadata // All ConceptMaps that reference this ValueSet
+	ValueSet    string   // ValueSet URL from StructureDefinition
+	ConceptMaps []string // All ConceptMaps that reference this ValueSet
 	SearchTypes map[string]string
 }

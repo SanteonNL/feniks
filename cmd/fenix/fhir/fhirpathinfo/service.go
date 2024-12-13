@@ -77,7 +77,7 @@ func (svc *PathInfoService) BuildIndex() error {
 			info.ValueSet = valueSetURL
 
 			// Then find all ConceptMaps that reference this ValueSet
-			conceptMaps, err := svc.conceptMapService.GetConceptMapsByValuesetURL()(valueSetURL)
+			conceptMaps, err := svc.conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
 			if err != nil {
 				svc.log.Warn().
 					Err(err).
@@ -114,7 +114,6 @@ func (svc *PathInfoService) getOrCreatePathInfo(path string) *PathInfo {
 
 	info := &PathInfo{
 		Path:        path,
-		ConceptMaps: make([]conceptmap.ConceptMapMetadata, 0),
 		SearchTypes: make(map[string]string),
 	}
 	svc.pathIndex[path] = info
@@ -122,7 +121,7 @@ func (svc *PathInfoService) getOrCreatePathInfo(path string) *PathInfo {
 }
 
 // GetConceptMaps returns all ConceptMaps that reference this field's ValueSet
-func (svc *PathInfoService) GetConceptMaps(path string) ([]conceptmap.ConceptMapMetadata, error) {
+func (svc *PathInfoService) GetConceptMaps(path string) ([]string, error) {
 	info, err := svc.GetPathInfo(path)
 	if err != nil {
 		return nil, err

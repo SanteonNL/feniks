@@ -95,9 +95,11 @@ func (s *ConceptMapService) findDefaultMapping(conceptMap *fhir.ConceptMap) *Tra
 }
 
 func (s *ConceptMapService) CreateConceptMap(id string, name string, sourceValueSet string, targetValueSet string) *fhir.ConceptMap {
+	url := fmt.Sprintf("http://localhost/fhir/ConceptMap/%s", id)
 
 	return &fhir.ConceptMap{
 		Id:        &id,
+		Url:       &url,
 		Name:      &name,
 		Status:    1,
 		Date:      stringPtr(time.Now().Format(time.RFC3339)),
@@ -136,7 +138,7 @@ func getDisplayValue(display *string) string {
 	return ""
 }
 
-func (svc *ConceptMapService) GetConceptMapsByValuesetURL(valueSetURL string) ([]*fhir.ConceptMap, error) {
+func (svc *ConceptMapService) GetConceptMapsByValuesetURL(valueSetURL string) ([]string, error) {
 	return svc.repo.GetConceptMapsByValuesetURL(valueSetURL)
 }
 

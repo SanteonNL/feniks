@@ -1,0 +1,184 @@
+{
+  "id": "conceptmap_santeon_metingnaamcodelijst_20241213",
+  "url": "http://localhost/fhir/ConceptMap/conceptmap_santeon_metingnaamcodelijst_20241213",
+  "name": "conceptmap_santeon_metingnaamcodelijst",
+  "status": "active",
+  "date": "2024-12-13T10:45:20+01:00",
+  "sourceUri": "",
+  "targetUri": "",
+  "group": [
+    {
+      "source": "",
+      "target": "http://loinc.org",
+      "element": [
+        {
+          "code": "BMI",
+          "display": "",
+          "target": [
+            {
+              "code": "39156-5",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "97816-3",
+          "display": "ASA score",
+          "target": [
+            {
+              "code": "97816-3",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "NIBP",
+          "display": "",
+          "target": [
+            {
+              "code": "8480-6",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "NIBP-2",
+          "display": "",
+          "target": [
+            {
+              "code": "8462-4",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "24u urine",
+          "display": "",
+          "target": [
+            {
+              "code": "3167-4",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "Gewicht",
+          "display": "",
+          "target": [
+            {
+              "code": "29463-7",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "RRdiastol",
+          "display": "",
+          "target": [
+            {
+              "code": "8462-4",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "RRsyst",
+          "display": "",
+          "target": [
+            {
+              "code": "8480-6",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "FEV1 % prd",
+          "display": "",
+          "target": [
+            {
+              "code": "20152-5",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "source": "http://snomed.info/sct",
+      "target": "http://snomed.info/sct",
+      "element": [
+        {
+          "code": "80771000146107",
+          "display": "Sectio (PRN)",
+          "target": [
+            {
+              "code": "80771000000000",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "80801000146105",
+          "display": "Indicatie sectio caesarea (PRN)",
+          "target": [
+            {
+              "code": "80801000000000",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "source": "Santeon",
+      "target": "Santeon",
+      "element": [
+        {
+          "code": "MCD_L_A",
+          "display": "Montreal Crohn score",
+          "target": [
+            {
+              "code": "MCD_A",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "MCD_L_B",
+          "display": "Montreal Crohn score",
+          "target": [
+            {
+              "code": "MCD_B",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "MCD_L_L",
+          "display": "Montreal Crohn score",
+          "target": [
+            {
+              "code": "MCD_L",
+              "display": "",
+              "equivalence": "equal"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "resourceType": "ConceptMap"
+}

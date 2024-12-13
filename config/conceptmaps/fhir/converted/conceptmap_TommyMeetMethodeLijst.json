@@ -1,9 +1,11 @@
 {
-  "name": "ConceptMap_20241205",
-  "id": "TommyMeetMethodeLijst_20241205dfg",
+  "id": "conceptmap_TommyMeetMethodeLijst_20241213",
+  "url": "http://localhost/fhir/ConceptMap/conceptmap_TommyMeetMethodeLijst_20241213",
+  "name": "conceptmap_TommyMeetMethodeLijst",
   "status": "active",
-  "description": "Converted from conceptmap_TommyMeetMethodeLijst_validated.csv on 2024-12-05 14:28:09",
-  "targetUri": "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354",
+  "date": "2024-12-13T10:45:20+01:00",
+  "sourceUri": "",
+  "targetUri": "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/conceptmap_converted_2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354",
   "group": [
     {
       "source": "https://mst.nl/mct",
@@ -15,7 +17,7 @@
           "target": [
             {
               "code": "SC_3",
-              "display": "ad",
+              "display": "",
               "equivalence": "equal"
             }
           ]
@@ -36,19 +38,24 @@
               "equivalence": "equal"
             }
           ]
-        }
-      ]
-    },
-    {
-      "source": "https://mst.nl/mct",
-      "target": "https//sasdft",
-      "element": [
+        },
         {
-          "code": "M15",
-          "display": "Hele fijne methode",
+          "code": "*",
+          "display": "e",
           "target": [
             {
-              "code": "SC_6",
+              "code": "SC_5",
+              "display": "ad",
+              "equivalence": "equal"
+            }
+          ]
+        },
+        {
+          "code": "1212",
+          "display": "",
+          "target": [
+            {
+              "code": "unknown",
               "display": "ad",
               "equivalence": "equal"
             }

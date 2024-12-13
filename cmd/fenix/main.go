@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/SanteonNL/fenix/cmd/fenix/datasource"
@@ -36,6 +37,38 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 
+	// Define paths
+	baseDir := "."                                                // Current directory
+	inputDir := filepath.Join(baseDir, "config/conceptmaps/flat") // ./csv directory for input files
+	repoDir := filepath.Join(baseDir, "config/conceptmaps/")      // ./fhir directory for repository
+
+	// Initialize repository
+	repository := conceptmap.NewConceptMapRepository(repoDir, log)
+
+	// Load existing concept maps
+	if err := repository.LoadConceptMaps(); err != nil {
+		log.Error().Err(err).Msg("Failed to load existing concept maps")
+		os.Exit(1)
+	}
+
+	// Initialize services and converter
+	conceptMapService := conceptmap.NewConceptMapService(repository, log)
+	converter := conceptmap.NewConceptMapConverter(log, conceptMapService)
+
+	// Process the input directory
+	log.Info().
+		Str("input_dir", inputDir).
+		Str("repo_dir", repoDir).
+		Msg("Starting conversion of CSV files")
+
+	// Set usePrefix to true to add 'conceptmap_converted_' prefix to ValueSet URIs
+	if err := converter.ConvertFolderToFHIR(inputDir, repository, true); err != nil {
+		log.Error().Err(err).Msg("Conversion process failed")
+		os.Exit(1)
+	}
+
+	log.Info().Msg("Successfully completed conversion process")
+
 	service := datasource.NewDataSourceService(db, log)
 
 	// Load queries
@@ -57,15 +90,6 @@ func main() {
 		}
 	}
 
-	// Initialize ConceptMap repository and service
-	conceptMapRepo := conceptmap.NewConceptMapRepository("config/conceptmaps/fhir", log)
-	err = conceptMapRepo.LoadConceptMaps()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load ConceptMaps")
-	}
-
-	conceptMapService := conceptmap.NewConceptMapService(conceptMapRepo, log)
-
 	// Example: Find ConceptMaps for a specific ValueSet
 	valueSetURL := "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354"
 
@@ -77,8 +101,7 @@ func main() {
 	} else {
 		for _, conceptMap := range conceptMaps {
 			log.Info().
-				Str("id", *conceptMap.Id).
-				Str("name", *conceptMap.Name).
+				Str("name", conceptMap).
 				Msg("Found ConceptMap")
 		}
 
