@@ -31,20 +31,8 @@ func (svc *SearchParameterService) BuildSearchParameterIndex() error {
 
 	for _, sp := range searchParams {
 		if sp.Expression == nil {
-			svc.log.Debug().
-				Str("code", sp.Code).
-				Str("url", sp.Url).
-				Msg("Skipping search parameter with nil expression")
 			continue
 		}
-
-		// Log the search parameter we're processing
-		svc.log.Info().
-			Str("code", sp.Code).
-			Str("url", sp.Url).
-			Str("type", sp.Type.String()).
-			Str("expression", *sp.Expression).
-			Msg("Processing search parameter")
 
 		// Split the expression into individual paths
 		paths := strings.Split(*sp.Expression, "|")
@@ -53,12 +41,6 @@ func (svc *SearchParameterService) BuildSearchParameterIndex() error {
 			if path == "" {
 				continue
 			}
-
-			// Log the raw path we're processing
-			svc.log.Debug().
-				Str("code", sp.Code).
-				Str("rawPath", path).
-				Msg("Processing path from expression")
 
 			// Extract resource and field
 			parts := strings.Split(path, ".")
@@ -72,41 +54,15 @@ func (svc *SearchParameterService) BuildSearchParameterIndex() error {
 			// Create standardized path
 			standardPath := parts[0] + "." + parts[1]
 
-			// Log the standardized path
-			svc.log.Debug().
-				Str("code", sp.Code).
-				Str("rawPath", path).
-				Str("standardPath", standardPath).
-				Msg("Standardized path")
-
 			// Initialize map for this path if needed
 			if _, exists := svc.pathCodeMap[standardPath]; !exists {
 				svc.pathCodeMap[standardPath] = make(map[string]string)
-				svc.log.Debug().
-					Str("path", standardPath).
-					Msg("Created new path entry")
 			}
 
 			// Add this search parameter's code and type
 			svc.pathCodeMap[standardPath][sp.Code] = sp.Type.String()
 
-			// Log what we just added
-			svc.log.Info().
-				Str("path", standardPath).
-				Str("code", sp.Code).
-				Str("type", sp.Type.String()).
-				Interface("currentCodes", svc.pathCodeMap[standardPath]).
-				Msg("Added search parameter to path")
 		}
-	}
-
-	// Dump the final state for Observation.code
-	if codes, exists := svc.pathCodeMap["Observation.code"]; exists {
-		svc.log.Info().
-			Interface("codes", codes).
-			Msg("Final state for Observation.code")
-	} else {
-		svc.log.Warn().Msg("No codes found for Observation.code")
 	}
 
 	return nil

@@ -176,25 +176,23 @@ func main() {
 
 	// Initialize SearchParameter service with the repository
 	searchParamService := searchparameter.NewSearchParameterService(searchParamRepo, log)
+	searchParamService.BuildSearchParameterIndex()
 
-	searchParamService.GetSearchParameterByCode("identifier", "Patient")
+	genderSearchType, err := searchParamService.GetSearchTypeByPathAndCode("Patient.gender", "gender")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get SearchParameter")
+	} else {
+		fmt.Printf("SearchParameter: %+v\n", genderSearchType)
+	}
 
 	pathInfoService := fhirpathinfo.NewPathInfoService(structureDefService, searchParamService, conceptMapService, log)
 	processorService := processor.NewProcessorService(log, pathInfoService, valuesetService, conceptMapService)
-
-	// Example: Get PathInfo for a specific resource type and path
-	resourceType := "Patient"
-	path := "identifier"
-
-	pathInfo, err := pathInfoService.GetPathInfo("Patient.gender")
+	searchType, err := pathInfoService.GetSearchTypeByPathAndCode("Patient.gender", "gender")
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get PathInfo")
+		log.Error().Err(err).Msg("Failed to get SearchType")
 	} else {
-		log.Info().
-			Str("resourceType", resourceType).
-			Str("path", path).
-			Msg("Successfully retrieved PathInfo")
-		fmt.Printf("PathInfo: %+v\n", pathInfo)
+		log.Info().Msg("Successfully retrieved SearchType")
+		fmt.Printf("SearchType: %+v\n", searchType)
 	}
 	// Process resources
 	filter := processor.Filter{

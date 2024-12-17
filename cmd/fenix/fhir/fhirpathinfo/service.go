@@ -90,19 +90,11 @@ func (svc *PathInfoService) BuildIndex() error {
 		}
 	}
 
-	// Process search parameters
-	searchTypesMap := svc.searchParamService.GetAllPathSearchTypes()
-	for path, codeMap := range searchTypesMap {
-		info := svc.getOrCreatePathInfo(path)
-		for code, searchType := range codeMap {
-			info.SearchTypes[code] = searchType
-		}
+	// First build the search parameter index
+	err := svc.searchParamService.BuildSearchParameterIndex()
+	if err != nil {
+		return fmt.Errorf("failed to build search parameter index: %w", err)
 	}
-
-	svc.log.Info().
-		Int("total_paths", len(svc.pathIndex)).
-		Msg("Completed building path index")
-
 	return nil
 }
 
@@ -132,4 +124,9 @@ func (svc *PathInfoService) GetConceptMaps(path string) ([]string, error) {
 	}
 
 	return info.ConceptMaps, nil
+}
+
+// GetSearchTypeByPathAndCode delegates to the SearchParameterService to get the search type
+func (svc *PathInfoService) GetSearchTypeByPathAndCode(path string, code string) (string, error) {
+	return svc.searchParamService.GetSearchTypeByPathAndCode(path, code)
 }
