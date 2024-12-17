@@ -185,8 +185,10 @@ func main() {
 		fmt.Printf("SearchParameter: %+v\n", genderSearchType)
 	}
 
+	outputMgr.WriteToJSON(genderSearchType, "searchType")
+
 	pathInfoService := fhirpathinfo.NewPathInfoService(structureDefService, searchParamService, conceptMapService, log)
-	processorService := processor.NewProcessorService(log, pathInfoService, valuesetService, conceptMapService)
+	processorService := processor.NewProcessorService(log, pathInfoService, valuesetService, conceptMapService, outputMgr)
 	searchType, err := pathInfoService.GetSearchTypeByPathAndCode("Patient.gender", "gender")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get SearchType")
