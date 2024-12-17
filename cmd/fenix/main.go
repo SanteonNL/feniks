@@ -76,7 +76,7 @@ func main() {
 
 	dataSourceService := datasource.NewDataSourceService(db, log)
 	// Load queries
-	err = dataSourceService.LoadQueryFile("queries/hix/flat/patient_1.sql")
+	err = dataSourceService.LoadQueryFile("queries/hix/flat/Observation_hix_metingen_metingen.sql")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load query file")
 	}
