@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -81,18 +80,18 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to load query file")
 	}
 
-	// Read resources
-	results, err := dataSourceService.ReadResources("Patient", "12345")
-	if err != nil {
-		log.Printf("Error: %v", err)
-	}
+	// // Read resources
+	// results, err := dataSourceService.ReadResources("Patient", "12345")
+	// if err != nil {
+	// 	log.Printf("Error: %v", err)
+	// }
 
-	// Print results
-	for _, result := range results {
-		for path, rowData := range result {
-			fmt.Printf("Resource Path: %s, Data: %v\n", path, rowData)
-		}
-	}
+	// // Print results
+	// for _, result := range results {
+	// 	for path, rowData := range result {
+	// 		fmt.Printf("Resource Path: %s, Data: %v\n", path, rowData)
+	// 	}
+	// }
 
 	// Example: Find ConceptMaps for a specific ValueSet
 	valueSetURL := "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354"
@@ -188,7 +187,20 @@ func main() {
 	outputMgr.WriteToJSON(genderSearchType, "searchType")
 
 	pathInfoService := fhirpathinfo.NewPathInfoService(structureDefService, searchParamService, conceptMapService, log)
-	processorService := processor.NewProcessorService(log, pathInfoService, valuesetService, conceptMapService, outputMgr)
+
+	processorConfig := processor.ProcessorConfig{
+		Log:           log,
+		PathInfoSvc:   pathInfoService,
+		ValueSetSvc:   valuesetService,
+		ConceptMapSvc: conceptMapService,
+		OutputManager: outputMgr,
+	}
+
+	processorService, err := processor.NewProcessorService(processorConfig)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to create ProcessorService")
+	}
+
 	searchType, err := pathInfoService.GetSearchTypeByPathAndCode("Patient.gender", "gender")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get SearchType")
@@ -202,15 +214,15 @@ func main() {
 		Value: "1s",
 	}
 
-	resources, err := processorService.ProcessResources(ctx, dataSourceService, "12", &filter)
+	resources, err := processorService.ProcessResources(ctx, dataSourceService, "Observation", "12", &filter)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to process resources")
 
 	}
 
 	for _, resource := range resources {
-		if jsonData, err := json.MarshalIndent(resource, "", "  "); err == nil {
-			fmt.Println(string(jsonData))
+		if err := outputMgr.WriteToJSON(resource, "resource"); err != nil {
+			log.Error().Err(err).Msg("Failed to write resource to file")
 		}
 	}
 

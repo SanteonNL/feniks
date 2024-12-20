@@ -15,7 +15,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// ResourceResult maps FHIR paths to their row data
+// datasource.ResourceResult maps FHIR paths to their row data
 type ResourceResult map[string][]RowData
 
 // RowData represents a single row of data
@@ -264,44 +264,39 @@ func (ds *DataSourceService) processNestedField(
 	currentID := id
 	currentParentID := parentID
 
-	// Process each part of the nested path except the last (which is the field name)
 	for i := 0; i < len(parts)-1; i++ {
 		part := parts[i]
 
-		// Handle array indexing if present
-		index := ds.extractIndex(part)
+		// Extract any array index and clean the part name
+		arrayIndex := ds.extractIndex(part)
 		cleanPart := ds.removeIndex(part)
 
-		// Build the current path
+		// Build path without array index
 		currentPath += "." + cleanPart
 
-		// Generate ID based on array indexing
-		if index != 0 {
-			if i == 0 {
-				// First level array
-				currentID = fmt.Sprintf("%d", index+1)
-			} else {
-				// Nested array
-				currentID = fmt.Sprintf("%s_%d", currentParentID, index+1)
-			}
-		} else {
-			// Handle index 0 case
-			if i == 0 {
-				currentID = "1"
-			} else {
-				currentID = fmt.Sprintf("%s_1", currentParentID)
-			}
+		// Generate ID based on array index if present
+		if arrayIndex > 0 {
+			// For array elements, use the index as the ID
+			currentID = strconv.Itoa(arrayIndex)
+		} else if i == 0 {
+			// First level, use "1" if no index specified
+			currentID = "1"
 		}
 
-		// Check if we're at the leaf level (last container before value)
+		// For nested elements under an array item, prefix with parent ID
+		if i > 0 && strings.Contains(parts[i-1], "[") {
+			currentID = fmt.Sprintf("%s_%d", currentParentID, arrayIndex+1)
+		}
+
+		// Check if we're at the leaf level
 		isLeaf := i >= len(parts)-2
 
-		// Ensure path exists in resources
+		// Initialize path if needed
 		if resources[resourceID][currentPath] == nil {
 			resources[resourceID][currentPath] = []RowData{}
 		}
 
-		// Find existing entry if any
+		// Find existing entry or create new one
 		existingIndex := -1
 		for idx, row := range resources[resourceID][currentPath] {
 			if row.ID == currentID {
@@ -311,7 +306,7 @@ func (ds *DataSourceService) processNestedField(
 		}
 
 		if isLeaf {
-			// Handle leaf node (actual value)
+			// Handle leaf node
 			leafField := parts[len(parts)-1]
 
 			if existingIndex != -1 {
@@ -319,29 +314,21 @@ func (ds *DataSourceService) processNestedField(
 				resources[resourceID][currentPath][existingIndex].Data[leafField] = value
 			} else {
 				// Create new entry
-				resources[resourceID][currentPath] = append(
-					resources[resourceID][currentPath],
-					RowData{
-						ID:       currentID,
-						ParentID: currentParentID,
-						Data:     map[string]interface{}{leafField: value},
-					},
-				)
+				newRow := RowData{
+					ID:       currentID,
+					ParentID: currentParentID,
+					Data:     map[string]interface{}{leafField: value},
+				}
+				resources[resourceID][currentPath] = append(resources[resourceID][currentPath], newRow)
 			}
-			break
-		} else {
-			// Handle intermediate node
-			if existingIndex == -1 {
-				// Create new intermediate node
-				resources[resourceID][currentPath] = append(
-					resources[resourceID][currentPath],
-					RowData{
-						ID:       currentID,
-						ParentID: currentParentID,
-						Data:     make(map[string]interface{}),
-					},
-				)
+		} else if existingIndex == -1 {
+			// Create new intermediate node
+			newRow := RowData{
+				ID:       currentID,
+				ParentID: currentParentID,
+				Data:     make(map[string]interface{}),
 			}
+			resources[resourceID][currentPath] = append(resources[resourceID][currentPath], newRow)
 		}
 
 		// Update parent ID for next iteration
@@ -349,7 +336,6 @@ func (ds *DataSourceService) processNestedField(
 	}
 }
 
-// Helper methods for array index handling
 func (ds *DataSourceService) extractIndex(part string) int {
 	start := strings.Index(part, "[")
 	end := strings.Index(part, "]")

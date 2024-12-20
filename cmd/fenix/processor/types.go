@@ -1,3 +1,4 @@
+// types.go
 package processor
 
 import (

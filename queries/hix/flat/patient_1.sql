@@ -12,7 +12,6 @@ SELECT
     --'Tommy' AS "name[0].given",
     'Hetterscheid' AS "name[0].family",
     '1992-01-01' AS "birthdate",
-    'jkahsdfjk' AS "gender",
     -- '2e Daalsedijk 106' AS "address[0].line",
     '3565AA' AS "address[0].postalCode",
     'Utrecht' AS "address[0].city",

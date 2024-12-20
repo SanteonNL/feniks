@@ -10,7 +10,7 @@ import (
 )
 
 // Part 3: Filter System
-func (rp *ResourceProcessor) checkFilter(path string, field reflect.Value) (*FilterResult, error) {
+func (rp *ProcessorService) checkFilter(path string, field reflect.Value) (*FilterResult, error) {
 	param, exists := rp.searchParams[path]
 	if !exists {
 		return &FilterResult{Passed: true}, nil
@@ -41,7 +41,7 @@ func (rp *ResourceProcessor) checkFilter(path string, field reflect.Value) (*Fil
 	}
 }
 
-func (rp *ResourceProcessor) checkDateFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
+func (rp *ProcessorService) checkDateFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
 	rp.log.Debug().
 		Str("fieldType", field.Type().String()).
 		Msg("Checking date filter")
@@ -83,7 +83,7 @@ func (rp *ResourceProcessor) checkDateFilter(field reflect.Value, param SearchPa
 	return &FilterResult{Passed: passed}, nil
 }
 
-func (rp *ResourceProcessor) checkStringFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
+func (rp *ProcessorService) checkStringFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
 	if field.Kind() != reflect.String &&
 		(field.Kind() != reflect.Ptr || field.Elem().Kind() != reflect.String) {
 		return &FilterResult{Passed: false}, nil
@@ -112,7 +112,7 @@ func parseTokenValue(value string) (string, string) {
 }
 
 // Token filter main entry point
-func (rp *ResourceProcessor) checkTokenFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
+func (rp *ProcessorService) checkTokenFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
 	if IsValueSetReference(param.Value) {
 		return rp.checkValueSetFilter(field, param)
 	}
@@ -122,7 +122,7 @@ func (rp *ResourceProcessor) checkTokenFilter(field reflect.Value, param SearchP
 }
 
 // Helper function to log available codes in ValueSet
-func (rp *ResourceProcessor) logValueSetContents(validCombinations map[string]map[string]bool) {
+func (rp *ProcessorService) logValueSetContents(validCombinations map[string]map[string]bool) {
 	for system, codes := range validCombinations {
 		var validCodes []string
 		for code := range codes {
@@ -137,7 +137,7 @@ func (rp *ResourceProcessor) logValueSetContents(validCombinations map[string]ma
 }
 
 // Update the checkValueSetFilter to include content logging
-func (rp *ResourceProcessor) checkValueSetFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
+func (rp *ProcessorService) checkValueSetFilter(field reflect.Value, param SearchParameter) (*FilterResult, error) {
 	valueSetURL := strings.TrimPrefix(param.Value, "ValueSet/")
 
 	rp.log.Debug().
@@ -195,7 +195,7 @@ func (rp *ResourceProcessor) checkValueSetFilter(field reflect.Value, param Sear
 
 // Also update the checking functions with more logging:
 
-func (rp *ResourceProcessor) checkSingleAgainstValueSet(field reflect.Value, validCombinations map[string]map[string]bool) (*FilterResult, error) {
+func (rp *ProcessorService) checkSingleAgainstValueSet(field reflect.Value, validCombinations map[string]map[string]bool) (*FilterResult, error) {
 	if field.Kind() == reflect.Ptr {
 		if field.IsNil() {
 			rp.log.Debug().Msg("Field is nil pointer")
@@ -283,7 +283,7 @@ func (rp *ResourceProcessor) checkSingleAgainstValueSet(field reflect.Value, val
 	}
 }
 
-func (rp *ResourceProcessor) checkSliceAgainstValueSet(slice reflect.Value, validCombinations map[string]map[string]bool) (*FilterResult, error) {
+func (rp *ProcessorService) checkSliceAgainstValueSet(slice reflect.Value, validCombinations map[string]map[string]bool) (*FilterResult, error) {
 	if slice.Len() == 0 {
 		rp.log.Debug().Msg("Empty slice, no values to check against ValueSet")
 		return &FilterResult{Passed: false}, nil
@@ -315,7 +315,7 @@ func (rp *ResourceProcessor) checkSliceAgainstValueSet(slice reflect.Value, vali
 }
 
 // Add this helper function for more detailed logging
-func (rp *ResourceProcessor) logValueSetMatch(coding reflect.Value, validCombinations map[string]map[string]bool) {
+func (rp *ProcessorService) logValueSetMatch(coding reflect.Value, validCombinations map[string]map[string]bool) {
 	var system, code string
 	if systemField := coding.FieldByName("System"); systemField.IsValid() && !systemField.IsNil() {
 		system = systemField.Elem().String()
@@ -337,7 +337,7 @@ func (rp *ResourceProcessor) logValueSetMatch(coding reflect.Value, validCombina
 		Msg("Checking coding against ValueSet systems")
 }
 
-func (rp *ResourceProcessor) checkTokenWithSystemCode(field reflect.Value, system, code string) (*FilterResult, error) {
+func (rp *ProcessorService) checkTokenWithSystemCode(field reflect.Value, system, code string) (*FilterResult, error) {
 	rp.log.Debug().
 		Str("fieldType", field.Type().String()).
 		Str("system", system).
@@ -350,7 +350,7 @@ func (rp *ResourceProcessor) checkTokenWithSystemCode(field reflect.Value, syste
 	return rp.checkSingleToken(field, system, code)
 }
 
-func (rp *ResourceProcessor) checkSliceToken(slice reflect.Value, system, code string) (*FilterResult, error) {
+func (rp *ProcessorService) checkSliceToken(slice reflect.Value, system, code string) (*FilterResult, error) {
 	// Empty slice never matches
 	if slice.Len() == 0 {
 		return &FilterResult{Passed: false}, nil
@@ -369,7 +369,7 @@ func (rp *ResourceProcessor) checkSliceToken(slice reflect.Value, system, code s
 	return &FilterResult{Passed: false}, nil
 }
 
-func (rp *ResourceProcessor) checkSingleToken(field reflect.Value, system, code string) (*FilterResult, error) {
+func (rp *ProcessorService) checkSingleToken(field reflect.Value, system, code string) (*FilterResult, error) {
 	// Get the field type, handling pointers
 	fieldType := field.Type().String()
 	if strings.HasPrefix(fieldType, "*") {
@@ -405,7 +405,7 @@ func (rp *ResourceProcessor) checkSingleToken(field reflect.Value, system, code 
 	}
 }
 
-func (rp *ResourceProcessor) matchesCoding(coding reflect.Value, system, code string) bool {
+func (rp *ProcessorService) matchesCoding(coding reflect.Value, system, code string) bool {
 	var codingSystem, codingCode string
 
 	if systemField := coding.FieldByName("System"); systemField.IsValid() && !systemField.IsNil() {
@@ -431,7 +431,7 @@ func (rp *ResourceProcessor) matchesCoding(coding reflect.Value, system, code st
 }
 
 // Helper function to check if a single element matches token criteria
-func (rp *ResourceProcessor) matchesToken(field reflect.Value, system, code string) bool {
+func (rp *ProcessorService) matchesToken(field reflect.Value, system, code string) bool {
 	rp.log.Debug().
 		Str("fieldType", field.Type().String()).
 		Str("fieldKind", field.Kind().String()).
@@ -483,7 +483,7 @@ func (rp *ResourceProcessor) matchesToken(field reflect.Value, system, code stri
 	return false
 }
 
-func (rp *ResourceProcessor) checkIdentifierFilter(field reflect.Value, system, code string) (*FilterResult, error) {
+func (rp *ProcessorService) checkIdentifierFilter(field reflect.Value, system, code string) (*FilterResult, error) {
 	var identifier *fhir.Identifier
 
 	if field.Kind() == reflect.Ptr {
@@ -521,7 +521,7 @@ func (rp *ResourceProcessor) checkIdentifierFilter(field reflect.Value, system, 
 	return &FilterResult{Passed: matches}, nil
 }
 
-func (rp *ResourceProcessor) checkCodingFilter(field reflect.Value, system, code string) (*FilterResult, error) {
+func (rp *ProcessorService) checkCodingFilter(field reflect.Value, system, code string) (*FilterResult, error) {
 	if field.IsNil() {
 		return &FilterResult{Passed: false}, nil
 	}

@@ -4,7 +4,7 @@ SELECT
     metingid AS id,
     '' AS parent_id,
     'Observation' AS fhir_path,
-    'finaal' AS "status", -- keeping original 'finaal'
+    'final' AS "status", -- keeping original 'finaal'
     
     -- Category 0 with original and additional codings
     'text' AS "category[0].text", -- original
@@ -49,10 +49,10 @@ SELECT
     'Laboratory1' AS "code.coding[0].display", -- original
     'http://snomed.info/sct' AS "code.coding[1].system",
     '33747003' AS "code.coding[1].code",
-    'Glucose measurement' AS "code.coding[1].display"
+    'Glucose measurement' AS "code.coding[1].display",
     
     -- Effective Date Time
-   -- metingdatumtijd AS "effectiveDateTime"
+    TO_CHAR(metingdatumtijd, 'YYYY-MM-DD') AS "effectiveDateTime"
 FROM 
     observation_raw
 -- WHERE   identificatienummer = :Patient.id

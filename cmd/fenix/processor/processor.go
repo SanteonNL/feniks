@@ -1,10 +1,10 @@
+// processor.go
 package processor
 
 import (
 	"context"
 	"fmt"
-	"strings"
-	"sync"
+	"reflect"
 
 	"github.com/SanteonNL/fenix/cmd/fenix/datasource"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/conceptmap"
@@ -20,28 +20,48 @@ type ProcessorService struct {
 	valueSetSvc    *valueset.ValueSetService
 	conceptMapSvc  *conceptmap.ConceptMapService
 	outputManager  *output.OutputManager
-	processedPaths sync.Map
+	processedPaths map[string]bool // Changed from sync.Map for simpler usage
+	resourceType   string
+	result         datasource.ResourceResult
 }
 
-func NewProcessorService(
-	log zerolog.Logger,
-	pathInfoSvc *fhirpathinfo.PathInfoService,
-	valueSetSvc *valueset.ValueSetService,
-	conceptMapSvc *conceptmap.ConceptMapService,
-	outputManager *output.OutputManager,
-) *ProcessorService {
-	return &ProcessorService{
-		log:           log,
-		pathInfoSvc:   pathInfoSvc,
-		valueSetSvc:   valueSetSvc,
-		conceptMapSvc: conceptMapSvc,
-		outputManager: outputManager,
+// ProcessorConfig holds all the configuration needed to create a new processor
+type ProcessorConfig struct {
+	Log           zerolog.Logger
+	PathInfoSvc   *fhirpathinfo.PathInfoService
+	ValueSetSvc   *valueset.ValueSetService
+	ConceptMapSvc *conceptmap.ConceptMapService
+	OutputManager *output.OutputManager
+}
+
+// NewProcessorService creates a new processor service with all required dependencies
+func NewProcessorService(config ProcessorConfig) (*ProcessorService, error) {
+	if config.PathInfoSvc == nil {
+		return nil, fmt.Errorf("pathInfoSvc is required")
 	}
+	if config.ValueSetSvc == nil {
+		return nil, fmt.Errorf("valueSetSvc is required")
+	}
+	if config.ConceptMapSvc == nil {
+		return nil, fmt.Errorf("conceptMapSvc is required")
+	}
+	if config.OutputManager == nil {
+		return nil, fmt.Errorf("outputManager is required")
+	}
+
+	return &ProcessorService{
+		log:            config.Log,
+		pathInfoSvc:    config.PathInfoSvc,
+		valueSetSvc:    config.ValueSetSvc,
+		conceptMapSvc:  config.ConceptMapSvc,
+		outputManager:  config.OutputManager,
+		processedPaths: make(map[string]bool),
+	}, nil
 }
 
 // ProcessResources processes resources with filtering
-func (p *ProcessorService) ProcessResources(ctx context.Context, ds *datasource.DataSourceService, patientID string, filter *Filter) ([]interface{}, error) {
-	results, err := ds.ReadResources("Observation", patientID)
+func (p *ProcessorService) ProcessResources(ctx context.Context, ds *datasource.DataSourceService, resourceType string, patientID string, filter *Filter) ([]interface{}, error) {
+	results, err := ds.ReadResources(resourceType, patientID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read resources: %w", err)
 	}
@@ -53,43 +73,55 @@ func (p *ProcessorService) ProcessResources(ctx context.Context, ds *datasource.
 
 	var processedResources []interface{}
 	for _, result := range results {
-		resource, err := p.createResource(result)
-		if err != nil {
-			p.log.Error().Err(err).Msg("Error creating resource")
-			continue
-		}
+		// Reset processor state for new resource
+		p.processedPaths = make(map[string]bool)
+		p.result = result
+		p.resourceType = resourceType // Set from parameter directly
 
-		p.log.Info().Msgf("Processing resource: %v", result)
-
-		passed, err := p.populateAndFilter(ctx, resource, result, filter)
+		processed, err := p.ProcessSingleResource(result, filter)
 		if err != nil {
 			p.log.Error().Err(err).Msg("Error processing resource")
 			continue
 		}
-
-		if passed {
-			processedResources = append(processedResources, resource)
+		if processed != nil {
+			processedResources = append(processedResources, processed)
 		}
 	}
 
 	return processedResources, nil
 }
 
+// ProcessSingleResource processes a single resource
+func (p *ProcessorService) ProcessSingleResource(result datasource.ResourceResult, filter *Filter) (interface{}, error) {
+	// Create resource
+	resource, err := p.createResource()
+	if err != nil {
+		return nil, fmt.Errorf("error creating resource: %w", err)
+	}
+
+	// Populate and filter resource
+	passed, err := p.populateResourceStruct(reflect.ValueOf(resource).Elem(), filter)
+	if err != nil {
+		return nil, fmt.Errorf("error populating resource: %w", err)
+	}
+
+	err = p.outputManager.WriteToJSON(resource, "result")
+	if err != nil {
+		return nil, fmt.Errorf("failed to write resources to JSON: %w", err)
+	}
+
+	if !passed {
+		return nil, nil
+	}
+
+	return resource, nil
+}
+
 // createResource creates a new instance of the appropriate resource type
-func (p *ProcessorService) createResource(result datasource.ResourceResult) (interface{}, error) {
-	var resourceType string
-	for path := range result {
-		parts := strings.Split(path, ".")
-		if len(parts) > 0 {
-			resourceType = parts[0]
-			break
-		}
-	}
-
-	factory, exists := ResourceFactoryMap[resourceType]
+func (p *ProcessorService) createResource() (interface{}, error) {
+	factory, exists := ResourceFactoryMap[p.resourceType]
 	if !exists {
-		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
+		return nil, fmt.Errorf("unsupported resource type: %s", p.resourceType)
 	}
-
 	return factory(), nil
 }

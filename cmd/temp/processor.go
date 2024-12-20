@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/SanteonNL/fenix/cmd/fenix/datasource"
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/rs/zerolog"
 )
@@ -98,12 +99,12 @@ func ProcessResources(ds *DataSource, patientID string, searchParams SearchParam
 }
 
 // populateResourceStruct maintains your current population logic
-func (rp *ResourceProcessor) populateResourceStruct(value reflect.Value, result ResourceResult) (*FilterResult, error) {
+func (rp *ProcessorService) populateResourceStruct(value reflect.Value, result datasource.ResourceResult) (*FilterResult, error) {
 	return rp.determinePopulateType(rp.resourceType, value, "", result)
 }
 
 // determinePopulateType handles different field types
-func (rp *ResourceProcessor) determinePopulateType(structPath string, value reflect.Value, parentID string, result ResourceResult) (*FilterResult, error) {
+func (rp *ProcessorService) determinePopulateType(structPath string, value reflect.Value, parentID string, result datasource.ResourceResult) (*FilterResult, error) {
 	rp.log.Debug().Str("structPath", structPath).Str("value.Kind()", value.Kind().String()).Msg("Determining populate type")
 
 	rows, exists := result[structPath]
@@ -127,7 +128,7 @@ func (rp *ResourceProcessor) determinePopulateType(structPath string, value refl
 }
 
 // Modify populateSlice to mark processed paths
-func (rp *ResourceProcessor) populateSlice(structPath string, value reflect.Value, parentID string, rows []RowData, result ResourceResult) (*FilterResult, error) {
+func (rp *ProcessorService) populateSlice(structPath string, value reflect.Value, parentID string, rows []RowData, result datasource.ResourceResult) (*FilterResult, error) {
 	rp.log.Debug().
 		Str("structPath", structPath).
 		Msg("Populating slice")
@@ -195,7 +196,7 @@ func (rp *ResourceProcessor) populateSlice(structPath string, value reflect.Valu
 
 // populateStruct handles populating struct fields including nested structures
 // Update populateStruct to properly handle filter failures
-func (rp *ResourceProcessor) populateStruct(path string, value reflect.Value, parentID string, rows []RowData, result ResourceResult) (*FilterResult, error) {
+func (rp *ProcessorService) populateStruct(path string, value reflect.Value, parentID string, rows []RowData, result datasource.ResourceResult) (*FilterResult, error) {
 	// First check if there's a filter for this struct level
 	rp.log.Debug().Str("path", path).Msg("Checking struct level filter")
 
@@ -253,7 +254,7 @@ func (rp *ResourceProcessor) populateStruct(path string, value reflect.Value, pa
 }
 
 // Part 1: Struct and Nested Fields
-func (rp *ResourceProcessor) populateStructAndNestedFields(structPath string, value reflect.Value, row RowData, result ResourceResult) (*FilterResult, error) {
+func (rp *ProcessorService) populateStructAndNestedFields(structPath string, value reflect.Value, row RowData, result datasource.ResourceResult) (*FilterResult, error) {
 	// First populate and filter struct fields
 	structResult, err := rp.populateStructFields(structPath, value.Addr().Interface(), row, result)
 	if err != nil {
@@ -274,7 +275,7 @@ func (rp *ResourceProcessor) populateStructAndNestedFields(structPath string, va
 }
 
 // Modify populateNestedFields to check processed paths
-func (rp *ResourceProcessor) populateNestedFields(parentPath string, parentValue reflect.Value, result ResourceResult, parentID string) (*FilterResult, error) {
+func (rp *ProcessorService) populateNestedFields(parentPath string, parentValue reflect.Value, result datasource.ResourceResult, parentID string) (*FilterResult, error) {
 	for i := 0; i < parentValue.NumField(); i++ {
 		field := parentValue.Field(i)
 		fieldName := parentValue.Type().Field(i).Name
@@ -303,7 +304,7 @@ func (rp *ResourceProcessor) populateNestedFields(parentPath string, parentValue
 	return &FilterResult{Passed: true}, nil
 }
 
-func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr interface{}, row RowData, result ResourceResult) (*FilterResult, error) {
+func (rp *ProcessorService) populateStructFields(structPath string, structPtr interface{}, row RowData, result datasource.ResourceResult) (*FilterResult, error) {
 	structValue := reflect.ValueOf(structPtr).Elem()
 	structType := structValue.Type()
 	processedFields := make(map[string]bool)
@@ -427,7 +428,7 @@ func (rp *ResourceProcessor) populateStructFields(structPath string, structPtr i
 
 // Modified setCodeableConceptField to better handle row relationships
 // Modified setCodeableConceptField to handle filtering
-func (rp *ResourceProcessor) setCodeableConceptField(field reflect.Value, path string, fieldName string, parentID string, rows []RowData, processedFields map[string]bool) error {
+func (rp *ProcessorService) setCodeableConceptField(field reflect.Value, path string, fieldName string, parentID string, rows []RowData, processedFields map[string]bool) error {
 	rp.log.Debug().
 		Str("path", path).
 		Str("fieldName", fieldName).
@@ -536,7 +537,7 @@ func (rp *ResourceProcessor) setCodeableConceptField(field reflect.Value, path s
 
 // Modified populateCodeableConcept to better handle Coding population
 // Modified populateCodeableConcept to correctly find coding rows
-func (rp *ResourceProcessor) populateCodeableConcept(conceptValue reflect.Value, path string, row RowData, processedFields map[string]bool) error {
+func (rp *ProcessorService) populateCodeableConcept(conceptValue reflect.Value, path string, row RowData, processedFields map[string]bool) error {
 	rp.log.Debug().
 		Str("path", path).
 		Str("rowID", row.ID).
@@ -598,7 +599,7 @@ func (rp *ResourceProcessor) populateCodeableConcept(conceptValue reflect.Value,
 }
 
 // Unified setCodingOrQuantityFromRow to handle both Coding and Quantity
-func (rp *ResourceProcessor) setCodingOrQuantityFromRow(valuesetBindingPath string, structPath string, field reflect.Value, fieldName string, row RowData, processedFields map[string]bool, isCoding bool) error {
+func (rp *ProcessorService) setCodingOrQuantityFromRow(valuesetBindingPath string, structPath string, field reflect.Value, fieldName string, row RowData, processedFields map[string]bool, isCoding bool) error {
 	rp.log.Debug().
 		Str("valuesetBindingPath", valuesetBindingPath).
 		Str("structPath", structPath).
@@ -667,7 +668,7 @@ func (rp *ResourceProcessor) setCodingOrQuantityFromRow(valuesetBindingPath stri
 }
 
 // extractFieldValues extracts key values from row data based on suffixes
-func (rp *ResourceProcessor) extractFieldValues(row RowData, processedFields map[string]bool) map[string]string {
+func (rp *ProcessorService) extractFieldValues(row RowData, processedFields map[string]bool) map[string]string {
 	fieldValues := make(map[string]string)
 
 	for key, value := range row.Data {
@@ -706,7 +707,7 @@ func (rp *ResourceProcessor) extractFieldValues(row RowData, processedFields map
 }
 
 // setCodingOrQuantityField sets a single field or appends to a slice if needed
-func (rp *ResourceProcessor) setCodingOrQuantityField(field reflect.Value, newValue interface{}, code string, system string) {
+func (rp *ProcessorService) setCodingOrQuantityField(field reflect.Value, newValue interface{}, code string, system string) {
 	// If the field is expecting a pointer, ensure newVal is a pointer as well
 
 	if field.Kind() == reflect.Slice {
@@ -787,7 +788,7 @@ func fieldMatchesPattern(fieldName string, prefix string, suffix string) bool {
 }
 
 // Part 2: Field Setting and Type Conversion
-func (rp *ResourceProcessor) setField(structPath string, structPtr interface{}, fieldName string, value interface{}) error {
+func (rp *ProcessorService) setField(structPath string, structPtr interface{}, fieldName string, value interface{}) error {
 
 	structValue := reflect.ValueOf(structPtr)
 	if structValue.Kind() != reflect.Ptr || structValue.IsNil() {
@@ -876,7 +877,7 @@ func (rp *ResourceProcessor) setField(structPath string, structPtr interface{}, 
 	return rp.setBasicField(field, value)
 }
 
-func (rp *ResourceProcessor) setDateField(field reflect.Value, value interface{}) error {
+func (rp *ProcessorService) setDateField(field reflect.Value, value interface{}) error {
 	rp.log.Debug().Str("field", field.Type().String()).Msg("Setting date field")
 	// Ensure we can take the address of the field
 	if !field.CanAddr() {
@@ -902,7 +903,7 @@ func (rp *ResourceProcessor) setDateField(field reflect.Value, value interface{}
 	return nil
 }
 
-func (rp *ResourceProcessor) setJSONNumber(field reflect.Value, value interface{}) error {
+func (rp *ProcessorService) setJSONNumber(field reflect.Value, value interface{}) error {
 	var num json.Number
 	switch v := value.(type) {
 	case json.Number:
@@ -923,7 +924,7 @@ func (rp *ResourceProcessor) setJSONNumber(field reflect.Value, value interface{
 	return nil
 }
 
-func (rp *ResourceProcessor) setBasicField(field reflect.Value, value interface{}) error {
+func (rp *ProcessorService) setBasicField(field reflect.Value, value interface{}) error {
 	v := reflect.ValueOf(value)
 	if field.Type() == v.Type() {
 		field.Set(v)
@@ -978,7 +979,7 @@ func getByteValue(v interface{}) ([]byte, error) {
 	}
 }
 
-func (rp *ResourceProcessor) setBasicType(path string, field reflect.Value, parentID string, rows []RowData) (*FilterResult, error) {
+func (rp *ProcessorService) setBasicType(path string, field reflect.Value, parentID string, rows []RowData) (*FilterResult, error) {
 	for _, row := range rows {
 		if row.ParentID == parentID || parentID == "" {
 			for key, value := range row.Data {

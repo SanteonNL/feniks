@@ -51,8 +51,8 @@ type Observation struct {
 	ValueRange           *Range                      `bson:"valueRange,omitempty" json:"valueRange,omitempty"`
 	ValueRatio           *Ratio                      `bson:"valueRatio,omitempty" json:"valueRatio,omitempty"`
 	ValueSampledData     *SampledData                `bson:"valueSampledData,omitempty" json:"valueSampledData,omitempty"`
-	ValueTime            *string                     `bson:"valueTime,omitempty" json:"valueTime,omitempty"`
-	ValueDateTime        *string                     `bson:"valueDateTime,omitempty" json:"valueDateTime,omitempty"`
+	ValueTime            *Date                     `bson:"valueTime,omitempty" json:"valueTime,omitempty"`
+	ValueDateTime        *Date                     `bson:"valueDateTime,omitempty" json:"valueDateTime,omitempty"`
 	ValuePeriod          *Period                     `bson:"valuePeriod,omitempty" json:"valuePeriod,omitempty"`
 	DataAbsentReason     *CodeableConcept            `bson:"dataAbsentReason,omitempty" json:"dataAbsentReason,omitempty"`
 	Interpretation       []CodeableConcept           `bson:"interpretation,omitempty" json:"interpretation,omitempty"`
