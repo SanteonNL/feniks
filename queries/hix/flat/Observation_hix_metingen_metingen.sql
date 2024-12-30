@@ -4,7 +4,7 @@ SELECT
     metingid AS id,
     '' AS parent_id,
     'Observation' AS fhir_path,
-    'final' AS "status", -- keeping original 'finaal'
+    'unknown' AS "status", -- keeping original 'finaal'
     
     -- Category 0 with original and additional codings
     'text' AS "category[0].text", -- original

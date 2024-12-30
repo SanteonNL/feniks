@@ -57,7 +57,7 @@ func main() {
 
 	// Initialize services and converter
 	conceptMapService := conceptmap.NewConceptMapService(repository, log)
-	converter := conceptmap.NewConceptMapConverter(log, conceptMapService)
+	conceptMapConverter := conceptmap.NewConceptMapConverter(log, conceptMapService)
 
 	// Process the input directory
 	log.Info().
@@ -66,7 +66,7 @@ func main() {
 		Msg("Starting conversion of CSV files")
 
 	// Set usePrefix to true to add 'conceptmap_converted_' prefix to ValueSet URIs
-	if err := converter.ConvertFolderToFHIR(inputDir, repository, true); err != nil {
+	if err := conceptMapConverter.ConvertFolderToFHIR(inputDir, repository, true); err != nil {
 		log.Error().Err(err).Msg("Conversion process failed")
 		os.Exit(1)
 	}
@@ -176,6 +176,8 @@ func main() {
 	// Initialize SearchParameter service with the repository
 	searchParamService := searchparameter.NewSearchParameterService(searchParamRepo, log)
 	searchParamService.BuildSearchParameterIndex()
+
+	searchParamService.DebugResourceSearchParameters("Observation")
 
 	genderSearchType, err := searchParamService.GetSearchTypeByPathAndCode("Patient.gender", "gender")
 	if err != nil {

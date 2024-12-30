@@ -34,6 +34,8 @@ func (svc *SearchParameterService) BuildSearchParameterIndex() error {
 			continue
 		}
 
+		//svc.log.Debug().Str("expression", *sp.Expression).Msg("Processing Expresion")
+
 		// Split the expression into individual paths
 		paths := strings.Split(*sp.Expression, "|")
 		for _, pathRaw := range paths {
@@ -62,6 +64,15 @@ func (svc *SearchParameterService) BuildSearchParameterIndex() error {
 			// Add this search parameter's code and type
 			svc.pathCodeMap[standardPath][sp.Code] = sp.Type.String()
 
+			// Add logging specifically for Observation resource
+			if sp.Code == "code" {
+				svc.log.Info().
+					Str("resource", parts[0]).
+					Str("field", parts[1]).
+					Str("code", sp.Code).
+					Str("type", sp.Type.String()).
+					Msg("Indexed search parameter for Observation resource")
+			}
 		}
 	}
 
@@ -113,6 +124,23 @@ func (svc *SearchParameterService) GetAllPathSearchTypes() map[string]map[string
 	return result
 }
 
+// IsValidSearchParameter checks if a search parameter code is valid for a resource type
+func (svc *SearchParameterService) IsValidSearchParameter(resourceType string, code string) bool {
+	svc.mu.RLock()
+	defer svc.mu.RUnlock()
+
+	// Check all paths for this resource type
+	for path, codeMap := range svc.pathCodeMap {
+		if strings.HasPrefix(path, resourceType+".") {
+			if _, exists := codeMap[code]; exists {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // GetAllSearchParameters returns all search parameters from repository
 func (svc *SearchParameterService) GetAllSearchParameters() []*fhir.SearchParameter {
 	return svc.repo.GetAllSearchParameters()
@@ -126,6 +154,56 @@ func (svc *SearchParameterService) GetSearchParameterByCode(code string, resourc
 // GetSearchParametersForResource returns all search parameters for a resource type
 func (svc *SearchParameterService) GetSearchParametersForResource(resourceType string) []*fhir.SearchParameter {
 	return svc.repo.GetSearchParametersForResource(resourceType)
+}
+
+// ListSearchParametersForResource returns all valid search parameters for a resource type
+func (svc *SearchParameterService) ListSearchParametersForResource(resourceType string) map[string][]string {
+	svc.mu.RLock()
+	defer svc.mu.RUnlock()
+
+	// Map to store unique codes and their search types
+	// code -> []searchTypes (a code might have different types in different paths)
+	parameters := make(map[string][]string)
+
+	for path, codeMap := range svc.pathCodeMap {
+		if strings.HasPrefix(path, resourceType+".") {
+			for code, searchType := range codeMap {
+				// Check if we already have this code
+				exists := false
+				if types, ok := parameters[code]; ok {
+					for _, t := range types {
+						if t == searchType {
+							exists = true
+							break
+						}
+					}
+					if !exists {
+						parameters[code] = append(parameters[code], searchType)
+					}
+				} else {
+					parameters[code] = []string{searchType}
+				}
+			}
+		}
+	}
+
+	return parameters
+}
+
+// Debug function to help visualize available search parameters
+func (svc *SearchParameterService) DebugResourceSearchParameters(resourceType string) {
+	params := svc.ListSearchParametersForResource(resourceType)
+
+	svc.log.Info().
+		Str("resourceType", resourceType).
+		Msgf("Available search parameters:")
+
+	for code, types := range params {
+		svc.log.Info().
+			Str("code", code).
+			Strs("types", types).
+			Msg("Search parameter")
+	}
 }
 
 // Helper function to debug a specific path
