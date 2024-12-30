@@ -25,7 +25,7 @@ SELECT
     'usual' AS "identifier[0].use",
     'http://fhir.nl/fhir/NamingSystem/bsn' AS "identifier[1].system",
     '1s' AS "identifier[1].value",
-    'male' AS "contact.gender"
+    'M' AS "contact.gender"
 FROM
     patient
 -- WHERE identificatienummer = :id
