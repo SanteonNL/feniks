@@ -125,3 +125,8 @@ func (p *ProcessorService) createResource() (interface{}, error) {
 	}
 	return factory(), nil
 }
+
+// GetConceptMapService returns the ConceptMapService
+func (p *ProcessorService) GetConceptMapService() *conceptmap.ConceptMapService {
+	return p.conceptMapSvc
+}

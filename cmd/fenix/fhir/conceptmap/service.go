@@ -149,3 +149,8 @@ func getVersionFromConceptMap(cm *fhir.ConceptMap) string {
 	}
 	return ""
 }
+
+// GetRepository returns the ConceptMapRepository
+func (s *ConceptMapService) GetRepository() *ConceptMapRepository {
+	return s.repo
+}
