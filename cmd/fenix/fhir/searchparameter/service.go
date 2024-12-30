@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/SanteonNL/fenix/cmd/fenix/types"
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/rs/zerolog"
 )
@@ -13,7 +14,7 @@ func NewSearchParameterService(repo *SearchParameterRepository, log zerolog.Logg
 	return &SearchParameterService{
 		repo:        repo,
 		log:         log,
-		pathCodeMap: make(map[string]map[string]string),
+		pathCodeMap: make(map[string]map[string]string), // Patient.gender -> map[code]type e.g	gender -> token
 	}
 }
 
@@ -64,15 +65,6 @@ func (svc *SearchParameterService) BuildSearchParameterIndex() error {
 			// Add this search parameter's code and type
 			svc.pathCodeMap[standardPath][sp.Code] = sp.Type.String()
 
-			// Add logging specifically for Observation resource
-			if sp.Code == "code" {
-				svc.log.Info().
-					Str("resource", parts[0]).
-					Str("field", parts[1]).
-					Str("code", sp.Code).
-					Str("type", sp.Type.String()).
-					Msg("Indexed search parameter for Observation resource")
-			}
 		}
 	}
 
@@ -124,21 +116,90 @@ func (svc *SearchParameterService) GetAllPathSearchTypes() map[string]map[string
 	return result
 }
 
-// IsValidSearchParameter checks if a search parameter code is valid for a resource type
-func (svc *SearchParameterService) IsValidSearchParameter(resourceType string, code string) bool {
+// ValidateSearchParameter validates both the search parameter and its modifier
+func (svc *SearchParameterService) ValidateSearchParameter(resourceType string, paramCode string, modifier string) (*types.Filter, error) {
 	svc.mu.RLock()
 	defer svc.mu.RUnlock()
 
-	// Check all paths for this resource type
+	// First check if the search parameter exists and get its type
+	isValid, searchType := svc.IsValidResourceSearchParameter(resourceType, paramCode)
+	if !isValid {
+		return &types.Filter{
+			Code:      paramCode,
+			Modifier:  modifier,
+			IsValid:   false,
+			ErrorType: "unknown-parameter",
+		}, fmt.Errorf("search parameter not found: %s", paramCode)
+	}
+
+	// If there's no modifier, the parameter is valid
+	if modifier == "" {
+		return &types.Filter{
+			Code:     paramCode,
+			Modifier: modifier,
+			IsValid:  true,
+		}, nil
+	}
+
+	// Validate the modifier
+	if err := svc.ValidateModifier(searchType, modifier); err != nil {
+		return &types.Filter{
+			Code:      paramCode,
+			Modifier:  modifier,
+			IsValid:   false,
+			ErrorType: "invalid-modifier",
+		}, err
+	}
+
+	// Parameter and modifier are valid
+	return &types.Filter{
+		Code:     paramCode,
+		Modifier: modifier,
+		IsValid:  true,
+	}, nil
+}
+
+// ValidateModifier checks if a modifier is valid for a given search type
+func (svc *SearchParameterService) ValidateModifier(searchType string, modifier string) error {
+	// Convert search type to lowercase for consistency
+	searchType = strings.ToLower(searchType)
+	modifier = strings.ToLower(modifier)
+
+	// Check if we have modifier definitions for this search type
+	validMods, exists := ValidModifiers[searchType]
+	if !exists {
+		return fmt.Errorf("unknown search type: %s", searchType)
+	}
+
+	// Check if the modifier is valid for this search type
+	if !validMods[modifier] {
+		return fmt.Errorf("modifier '%s' is not valid for search type '%s'", modifier, searchType)
+	}
+
+	return nil
+}
+
+// IsValidResourceSearchParameter checks if a search parameter is valid for a resource type
+// and returns its search type
+func (svc *SearchParameterService) IsValidResourceSearchParameter(resourceType, paramCode string) (bool, string) {
+	// Iterate over the pathCodeMap
 	for path, codeMap := range svc.pathCodeMap {
-		if strings.HasPrefix(path, resourceType+".") {
-			if _, exists := codeMap[code]; exists {
-				return true
+		// Split the key to get the resource type
+		parts := strings.Split(path, ".")
+		if len(parts) < 2 {
+			continue
+		}
+
+		// Check if the first part of the key matches the resourceType
+		if parts[0] == resourceType {
+			// Check if we have a search type for this code
+			if searchType, hasType := codeMap[paramCode]; hasType {
+				return true, searchType
 			}
 		}
 	}
 
-	return false
+	return false, ""
 }
 
 // GetAllSearchParameters returns all search parameters from repository

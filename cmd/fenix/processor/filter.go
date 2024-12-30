@@ -6,10 +6,11 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/SanteonNL/fenix/cmd/fenix/types"
 	"github.com/SanteonNL/fenix/models/fhir"
 )
 
-func (p *ProcessorService) checkFilter(ctx context.Context, field reflect.Value, path string, searchType string, filter *Filter) (bool, error) {
+func (p *ProcessorService) checkFilter(ctx context.Context, field reflect.Value, path string, searchType string, filter *types.Filter) (bool, error) {
 	switch searchType {
 	case "token":
 		return p.checkTokenFilter(ctx, field, path, filter.Value)

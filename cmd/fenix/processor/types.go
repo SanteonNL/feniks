@@ -7,10 +7,9 @@ import (
 
 // Filter represents the basic filter input
 type Filter struct {
-	Code      string                   // e.g., "code"
-	Value     string                   // e.g., "8480-6"
-	Type      *fhir.SearchParamType    // e.g., "token"
-	Modifier  *fhir.SearchModifierCode // e.g., "in"
+	Code      string // e.g., "code"
+	Value     string // e.g., "8480-6"
+	Modifier  string // e.g., "in"
 	IsValid   bool
 	ErrorType string
 }

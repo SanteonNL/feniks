@@ -228,6 +228,20 @@ func main() {
 		}
 	}
 
+	filterType, err := searchParamService.ValidateSearchParameter("Observation", "code", "in")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to validate search parameter")
+	} else {
+		fmt.Printf("Filter: %+v\n", filterType)
+	}
+
+	filterType, err = searchParamService.ValidateSearchParameter("Observation", "ads", "in")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to validate search parameter")
+	} else {
+		fmt.Printf("Filter: %+v\n", filterType)
+	}
+
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
 	log.Debug().Msgf("Execution time: %s", duration)
