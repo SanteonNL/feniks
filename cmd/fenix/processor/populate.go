@@ -693,7 +693,32 @@ func (rp *ProcessorService) setField(structPath string, structPtr interface{}, f
 	structFieldType := field.Type()
 	if typeHasCodeMethod(structFieldType) { // Suggesting it is a code type
 		rp.log.Debug().Msgf("The type has a Code() method, indicating a 'code' type.")
-		// Just use the value as-is
+
+		// Retrieve the specific concept map from the repository
+		// TODO: make it more generic
+		// TODO: make sure that nils etc. are handled properly
+		// TODO: also translate the display field
+		// TODO: make a function insetad of much code within setFied
+		conceptMapService := rp.GetConceptMapService()
+		repository := conceptMapService.GetRepository()
+		conceptMap, err := repository.GetConceptMap("conceptmap_administrative_gender_test_20241230")
+		if err != nil {
+			rp.log.Error().Err(err).Msg("Failed to retrieve concept map")
+		} else {
+			// Perform concept mapping using the retrieved concept map
+			translatedCode, err := conceptMapService.TranslateCode(conceptMap, value.(string), true)
+			if err != nil {
+				rp.log.Error().Err(err).Msg("Failed to translate code")
+			} else {
+				if translatedCode != nil {
+					rp.log.Debug().Msgf("Translated code: %s", translatedCode.TargetCode)
+					value = translatedCode.TargetCode
+				} else {
+					rp.log.Debug().Msg("No translation found")
+				}
+			}
+
+		}
 	}
 
 	// Check if type implements UnmarshalJSON
