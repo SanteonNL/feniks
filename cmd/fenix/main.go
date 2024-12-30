@@ -75,7 +75,8 @@ func main() {
 
 	dataSourceService := datasource.NewDataSourceService(db, log)
 	// Load queries
-	err = dataSourceService.LoadQueryFile("queries/hix/flat/Observation_hix_metingen_metingen.sql")
+	//err = dataSourceService.LoadQueryFile("queries/hix/flat/Observation_hix_metingen_metingen.sql")
+	err = dataSourceService.LoadQueryFile("queries/hix/flat/patient_1.sql")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load query file")
 	}
@@ -177,7 +178,7 @@ func main() {
 	searchParamService := searchparameter.NewSearchParameterService(searchParamRepo, log)
 	searchParamService.BuildSearchParameterIndex()
 
-	searchParamService.DebugResourceSearchParameters("Observation")
+	searchParamService.DebugResourceSearchParameters("Patient")
 
 	genderSearchType, err := searchParamService.GetSearchTypeByPathAndCode("Patient.gender", "gender")
 	if err != nil {
@@ -216,7 +217,7 @@ func main() {
 		Value: "1s",
 	}
 
-	resources, err := processorService.ProcessResources(ctx, dataSourceService, "Observation", "12", &filter)
+	resources, err := processorService.ProcessResources(ctx, dataSourceService, "Patient", "12", &filter)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to process resources")
 
@@ -228,14 +229,14 @@ func main() {
 		}
 	}
 
-	filterType, err := searchParamService.ValidateSearchParameter("Observation", "code", "in")
+	filterType, err := searchParamService.ValidateSearchParameter("Patient", "code", "in")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to validate search parameter")
 	} else {
 		fmt.Printf("Filter: %+v\n", filterType)
 	}
 
-	filterType, err = searchParamService.ValidateSearchParameter("Observation", "ads", "in")
+	filterType, err = searchParamService.ValidateSearchParameter("Patient", "ads", "in")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to validate search parameter")
 	} else {
