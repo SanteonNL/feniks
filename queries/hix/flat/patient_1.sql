@@ -25,8 +25,9 @@ SELECT
     'usual' AS "identifier[0].use",
     'http://fhir.nl/fhir/NamingSystem/bsn' AS "identifier[1].system",
     '1s' AS "identifier[1].value",
-    'M' AS "contact.gender"
+    'adsfasdf' AS "contact.gender"
 FROM
     patient
--- WHERE identificatienummer = :id
+-- WHERE identificatienummer ?id
+-- WHERE identificatienummer ?patient
 LIMIT 1;

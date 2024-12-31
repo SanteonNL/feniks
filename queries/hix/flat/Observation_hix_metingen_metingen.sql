@@ -55,7 +55,10 @@ SELECT
     TO_CHAR(metingdatumtijd, 'YYYY-MM-DD') AS "effectiveDateTime"
 FROM 
     observation_raw
--- WHERE   identificatienummer = :Patient.id
+-- WHERE   identificatienummer ?patient 
+-- WHERE  <metingid> ?id
+-- WHERE  <geslachstveldin HIX> ?gender (niet implementeren)
+-- WHERE   datum ?date 
 LIMIT 1;
 
 

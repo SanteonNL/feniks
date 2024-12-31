@@ -43,6 +43,7 @@ func (fr *FHIRRouter) SetupRoutes() http.Handler {
 			// Type level interactions
 			r.Get("/", fr.handleSearch) // Search
 
+			// TODO: Add other id level interactions
 			// Instance level interactions
 			// r.Route("/{id}", func(r chi.Router) {
 			// 	r.Get("/", fr.handleRead) // Read

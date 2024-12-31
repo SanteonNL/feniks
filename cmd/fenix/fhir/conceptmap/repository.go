@@ -98,17 +98,17 @@ func (repo *ConceptMapRepository) loadConceptMapFile(filePath string) (*fhir.Con
 // GetConceptMap retrieves a ConceptMap by ID or URL.
 func (repo *ConceptMapRepository) GetConceptMap(url string) (*fhir.ConceptMap, error) {
 
+	// Try cache first
+	if cached, ok := repo.cache.Load(url); ok {
+		return cached.(*fhir.ConceptMap), nil
+	}
+
 	fileName, err := repo.GetConceptMapFileNameByURL(url)
 	if err != nil {
 		return nil, err
 	}
 
 	filePath := filepath.Join(repo.localPath, fileName)
-
-	// Try cache first
-	if cached, ok := repo.cache.Load(url); ok {
-		return cached.(*fhir.ConceptMap), nil
-	}
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
