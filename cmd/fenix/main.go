@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/SanteonNL/fenix/cmd/fenix/api"
 	"github.com/SanteonNL/fenix/cmd/fenix/datasource"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/conceptmap"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/fhirpathinfo"
@@ -229,6 +231,17 @@ func main() {
 		if err := outputMgr.WriteToJSON(resource, "resource"); err != nil {
 			log.Error().Err(err).Msg("Failed to write resource to file")
 		}
+	}
+
+	// Create and setup router
+	router := api.NewFHIRRouter(searchParamService, processorService)
+	handler := router.SetupRoutes()
+
+	// Start server
+	port := ":8080"
+	log.Info().Msgf("Starting FHIR server on port %s", port)
+	if err := http.ListenAndServe(port, handler); err != nil {
+		log.Fatal().Err(err).Msg("Server failed to start")
 	}
 
 	filterType, err := searchParamService.ValidateSearchParameter("Patient", "code", "in")
