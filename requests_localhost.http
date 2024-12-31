@@ -1,0 +1,10 @@
+@url = http://localhost:8080/r4
+
+GET {{url}}/JAPAL
+
+### 
+GET {{url}}/Observation?asdf=1912&code:in=1234,5678&jaaaaa=122121
+
+
+### 
+GET {{url}}/None?asdf=1912&code:in=1234,5678&jaaaaa=122121
