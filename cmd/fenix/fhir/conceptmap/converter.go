@@ -118,15 +118,15 @@ func (c *ConceptMapConverter) ConvertCSVToFHIRAndSave(reader io.Reader, csvName 
 		// Update ValueSet URI from first valid row
 		if !firstRowProcessed && mapping.ValueSetURI != "" {
 			uri := mapping.ValueSetURI
-			if usePrefix {
-				// Add prefix to the last segment of the URI
-				segments := strings.Split(uri, "/")
-				if len(segments) > 0 {
-					lastIndex := len(segments) - 1
-					segments[lastIndex] = "conceptmap_converted_" + segments[lastIndex]
-					uri = strings.Join(segments, "/")
-				}
-			}
+			// if usePrefix {
+			// 	// Add prefix to the last segment of the URI
+			// 	segments := strings.Split(uri, "/")
+			// 	if len(segments) > 0 {
+			// 		lastIndex := len(segments) - 1
+			// 		segments[lastIndex] = "conceptmap_converted_" + segments[lastIndex]
+			// 		uri = strings.Join(segments, "/")
+			// 	}
+			// }
 			conceptMap.TargetUri = &uri
 			firstRowProcessed = true
 		}
@@ -192,6 +192,7 @@ func (c *ConceptMapConverter) ConvertCSVToFHIR(reader io.Reader, name string) (*
 
 	data, err := os.ReadFile(filepath.Join(convertedPath, files[0].Name()))
 	if err != nil {
+		c.log.Fatal().Err(err).Msg("Failed to read ConceptMap file")
 		return nil, fmt.Errorf("failed to read ConceptMap file: %w", err)
 	}
 

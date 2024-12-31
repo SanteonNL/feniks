@@ -42,9 +42,9 @@ func main() {
 	}
 
 	// Define paths
-	baseDir := "."                                                // Current directory
-	inputDir := filepath.Join(baseDir, "config/conceptmaps/flat") // ./csv directory for input files
-	repoDir := filepath.Join(baseDir, "config/conceptmaps/")      // ./fhir directory for repository
+	baseDir := "."                                                         // Current directory
+	inputDir := filepath.Join(baseDir, "config/conceptmaps/flat")          // ./csv directory for input files
+	repoDir := filepath.Join(baseDir, "config/conceptmaps/fhir/converted") // ./fhir directory for repository
 
 	// Initialize repository
 	repository := conceptmap.NewConceptMapRepository(repoDir, log)
@@ -190,10 +190,12 @@ func main() {
 	outputMgr.WriteToJSON(genderSearchType, "searchType")
 
 	pathInfoService := fhirpathinfo.NewPathInfoService(structureDefService, searchParamService, conceptMapService, log)
+	structureDefService.BuildStructureDefinitionIndex()
 
 	processorConfig := processor.ProcessorConfig{
 		Log:           log,
 		PathInfoSvc:   pathInfoService,
+		StructDefSvc:  structureDefService,
 		ValueSetSvc:   valuesetService,
 		ConceptMapSvc: conceptMapService,
 		OutputManager: outputMgr,

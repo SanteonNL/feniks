@@ -49,7 +49,7 @@ func (svc *PathInfoService) GetSearchTypeByCode(path, code string) (string, erro
 	return searchType, nil
 }
 
-// GetValueSet returns the ValueSet URL for a path
+// GetValueSet returns the ValueSet URL binding  for a path
 func (svc *PathInfoService) GetValueSet(path string) (string, error) {
 	info, err := svc.GetPathInfo(path)
 	if err != nil {

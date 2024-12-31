@@ -30,10 +30,9 @@ func NewConceptMapService(repo *ConceptMapRepository, log zerolog.Logger) *Conce
 func stringPtr(s string) *string {
 	return &s
 }
-
-func (s *ConceptMapService) TranslateCode(conceptMap *fhir.ConceptMap, sourceCode string, typeIsCode bool) (*TranslationResult, error) {
-	if conceptMap == nil || sourceCode == "" {
-		return nil, fmt.Errorf("conceptMap and sourceCode are required")
+func (s *ConceptMapService) TranslateCode(conceptMapURLs []string, sourceCode string, typeIsCode bool) (*TranslationResult, error) {
+	if len(conceptMapURLs) == 0 || sourceCode == "" {
+		return nil, fmt.Errorf("at least one conceptMap URL and sourceCode are required")
 	}
 
 	s.log.Debug().
@@ -41,20 +40,30 @@ func (s *ConceptMapService) TranslateCode(conceptMap *fhir.ConceptMap, sourceCod
 		Bool("typeIsCode", typeIsCode).
 		Msg("Starting code translation")
 
-	// Try normal mapping first
-	result := s.findDirectMapping(conceptMap, sourceCode)
-	if result != nil {
-		return result, nil
-	}
+	// Try each concept map
+	for _, url := range conceptMapURLs {
+		conceptMap, err := s.repo.GetConceptMap(url)
+		if err != nil {
+			s.log.Debug().Err(err).Str("url", url).Msg("Failed to get concept map, trying next")
+			continue
+		}
 
-	// Try default mapping for code types
-	if typeIsCode {
-		result := s.findDefaultMapping(conceptMap)
+		// Try normal mapping first
+		result := s.findDirectMapping(conceptMap, sourceCode)
 		if result != nil {
 			return result, nil
 		}
+
+		// Try default mapping for code types
+		if typeIsCode {
+			result := s.findDefaultMapping(conceptMap)
+			if result != nil {
+				return result, nil
+			}
+		}
 	}
 
+	// No valid translation found in any concept map
 	return nil, nil
 }
 

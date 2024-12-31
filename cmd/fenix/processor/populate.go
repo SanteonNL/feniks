@@ -644,6 +644,7 @@ func fieldMatchesPattern(fieldName string, prefix string, suffix string) bool {
 
 // Part 2: Field Setting and Type Conversion
 func (rp *ProcessorService) setField(structPath string, structPtr interface{}, fieldName string, value interface{}) error {
+	fhirPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName[:1])+fieldName[1:])
 
 	structValue := reflect.ValueOf(structPtr)
 	if structValue.Kind() != reflect.Ptr || structValue.IsNil() {
@@ -699,26 +700,33 @@ func (rp *ProcessorService) setField(structPath string, structPtr interface{}, f
 		// TODO: make sure that nils etc. are handled properly
 		// TODO: also translate the display field
 		// TODO: make a function insetad of much code within setFied
-		conceptMapService := rp.GetConceptMapService()
-		repository := conceptMapService.GetRepository()
-		conceptMap, err := repository.GetConceptMap("conceptmap_administrative_gender_test_20241230")
+		bindingValueSet, err := rp.structDefSvc.GetValueSetForPath(fhirPath)
 		if err != nil {
-			rp.log.Error().Err(err).Msg("Failed to retrieve concept map")
-		} else {
-			// Perform concept mapping using the retrieved concept map
-			translatedCode, err := conceptMapService.TranslateCode(conceptMap, value.(string), true)
-			if err != nil {
-				rp.log.Error().Err(err).Msg("Failed to translate code")
-			} else {
-				if translatedCode != nil {
-					rp.log.Debug().Msgf("Translated code: %s", translatedCode.TargetCode)
-					value = translatedCode.TargetCode
-				} else {
-					rp.log.Debug().Msg("No translation found")
-				}
-			}
-
+			rp.log.Error().Err(err).Msg("Failed to get ValueSet")
 		}
+
+		rp.log.Debug().Msgf("binding ValueSet: %s", bindingValueSet)
+
+		conceptMapURL, err := rp.conceptMapSvc.GetConceptMapsByValuesetURL(bindingValueSet)
+		if err != nil {
+			rp.log.Error().Err(err).Msg("Failed to get ConceptMap")
+		}
+
+		rp.log.Debug().Msgf("conceptMapURL: %s", conceptMapURL)
+
+		// Perform concept mapping using the retrieved concept map
+		translatedCode, err := rp.conceptMapSvc.TranslateCode(conceptMapURL, value.(string), true)
+		if err != nil {
+			rp.log.Error().Err(err).Msg("Failed to translate code")
+		} else {
+			if translatedCode != nil {
+				rp.log.Debug().Msgf("Translated code: %s", translatedCode.TargetCode)
+				value = translatedCode.TargetCode
+			} else {
+				rp.log.Debug().Msg("No translation found")
+			}
+		}
+
 	}
 
 	// Check if type implements UnmarshalJSON

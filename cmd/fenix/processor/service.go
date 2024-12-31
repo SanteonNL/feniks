@@ -9,6 +9,7 @@ import (
 	"github.com/SanteonNL/fenix/cmd/fenix/datasource"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/conceptmap"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/fhirpathinfo"
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/structuredefinition"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/valueset"
 	"github.com/SanteonNL/fenix/cmd/fenix/output"
 	"github.com/rs/zerolog"
@@ -17,6 +18,7 @@ import (
 type ProcessorService struct {
 	log            zerolog.Logger
 	pathInfoSvc    *fhirpathinfo.PathInfoService
+	structDefSvc   *structuredefinition.StructureDefinitionService
 	valueSetSvc    *valueset.ValueSetService
 	conceptMapSvc  *conceptmap.ConceptMapService
 	outputManager  *output.OutputManager
@@ -29,6 +31,7 @@ type ProcessorService struct {
 type ProcessorConfig struct {
 	Log           zerolog.Logger
 	PathInfoSvc   *fhirpathinfo.PathInfoService
+	StructDefSvc  *structuredefinition.StructureDefinitionService
 	ValueSetSvc   *valueset.ValueSetService
 	ConceptMapSvc *conceptmap.ConceptMapService
 	OutputManager *output.OutputManager
@@ -52,6 +55,7 @@ func NewProcessorService(config ProcessorConfig) (*ProcessorService, error) {
 	return &ProcessorService{
 		log:            config.Log,
 		pathInfoSvc:    config.PathInfoSvc,
+		structDefSvc:   config.StructDefSvc,
 		valueSetSvc:    config.ValueSetSvc,
 		conceptMapSvc:  config.ConceptMapSvc,
 		outputManager:  config.OutputManager,

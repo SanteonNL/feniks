@@ -51,15 +51,15 @@ func (repo *ConceptMapRepository) LoadConceptMaps() error {
 				continue
 			}
 
-			if conceptMap.Id != nil {
-				repo.cache.Store(*conceptMap.Id, conceptMap)
+			if conceptMap.Url != nil {
+				repo.cache.Store(*conceptMap.Url, conceptMap)
 				repo.log.Debug().
-					Str("id", *conceptMap.Id).
-					Msg("Loaded ConceptMap into cache by ID")
+					Str("id", *conceptMap.Url).
+					Msg("Loaded ConceptMap into cache by Url")
 			} else {
 				repo.log.Warn().
 					Str("file", file.Name()).
-					Msg("ConceptMap has no ID")
+					Msg("ConceptMap has no Url")
 			}
 
 			if conceptMap.TargetUri != nil {
@@ -83,6 +83,7 @@ func (repo *ConceptMapRepository) LoadConceptMaps() error {
 func (repo *ConceptMapRepository) loadConceptMapFile(filePath string) (*fhir.ConceptMap, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
+		repo.log.Fatal().Err(err).Str("path", filePath).Msg("Failed to read ConceptMap file")
 		return nil, fmt.Errorf("failed to read ConceptMap file: %w", err)
 	}
 
@@ -95,16 +96,23 @@ func (repo *ConceptMapRepository) loadConceptMapFile(filePath string) (*fhir.Con
 }
 
 // GetConceptMap retrieves a ConceptMap by ID or URL.
-func (repo *ConceptMapRepository) GetConceptMap(key string) (*fhir.ConceptMap, error) {
+func (repo *ConceptMapRepository) GetConceptMap(url string) (*fhir.ConceptMap, error) {
+
+	fileName, err := repo.GetConceptMapFileNameByURL(url)
+	if err != nil {
+		return nil, err
+	}
+
+	filePath := filepath.Join(repo.localPath, fileName)
+
 	// Try cache first
-	if cached, ok := repo.cache.Load(key); ok {
+	if cached, ok := repo.cache.Load(url); ok {
 		return cached.(*fhir.ConceptMap), nil
 	}
 
-	// Load from disk
-	filePath := filepath.Join(repo.localPath, repo.getFileName(key))
 	data, err := os.ReadFile(filePath)
 	if err != nil {
+		repo.log.Error().Err(err).Str("path", filePath).Msg("Failed to read ConceptMap file")
 		return nil, fmt.Errorf("failed to read ConceptMap file: %w", err)
 	}
 
@@ -112,7 +120,7 @@ func (repo *ConceptMapRepository) GetConceptMap(key string) (*fhir.ConceptMap, e
 	if err := json.Unmarshal(data, &conceptMap); err != nil {
 		return nil, fmt.Errorf("failed to parse ConceptMap: %w", err)
 	}
-	repo.cache.Store(key, &conceptMap)
+	repo.cache.Store(url, &conceptMap)
 	return &conceptMap, nil
 }
 
@@ -123,7 +131,7 @@ func (repo *ConceptMapRepository) GetConceptMapsByValuesetURL(valueSetURL string
 	repo.cache.Range(func(key, value interface{}) bool {
 		conceptMap := value.(*fhir.ConceptMap)
 		if conceptMap.TargetUri != nil && *conceptMap.TargetUri == valueSetURL {
-			matchingConceptMapURLs = append(matchingConceptMapURLs, *conceptMap.TargetUri)
+			matchingConceptMapURLs = append(matchingConceptMapURLs, *conceptMap.Url)
 		}
 		return true
 	})
@@ -139,4 +147,52 @@ func (repo *ConceptMapRepository) GetConceptMapsByValuesetURL(valueSetURL string
 // Helper function to get the file name for a ConceptMap by ID or URL.
 func (repo *ConceptMapRepository) getFileName(key string) string {
 	return fmt.Sprintf("%s.json", key)
+}
+
+// GetConceptMapFileNameByURL returns the filename of a ConceptMap based on its URL
+func (repo *ConceptMapRepository) GetConceptMapFileNameByURL(url string) (string, error) {
+	var matchingFileName string
+	err := filepath.Walk(repo.localPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories and non-JSON files
+		if info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
+			return nil
+		}
+
+		conceptMap, err := repo.loadConceptMapFile(path)
+		if err != nil {
+			repo.log.Warn().
+				Err(err).
+				Str("file", info.Name()).
+				Str("path", path).
+				Msg("Failed to load ConceptMap file while searching")
+			return nil // Continue walking even if one file fails
+		}
+
+		// Check both URL and TargetUri
+		if (conceptMap.Url != nil && *conceptMap.Url == url) ||
+			(conceptMap.TargetUri != nil && *conceptMap.TargetUri == url) {
+			repo.log.Debug().
+				Str("url", url).
+				Str("filename", info.Name()).
+				Msg("Found matching ConceptMap file")
+			matchingFileName = info.Name()
+			return filepath.SkipAll // Stop walking once we find a match
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("error walking directory: %w", err)
+	}
+
+	if matchingFileName == "" {
+		return "", fmt.Errorf("no ConceptMap file found for URL: %s", url)
+	}
+
+	return matchingFileName, nil
 }
