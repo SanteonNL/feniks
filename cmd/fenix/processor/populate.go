@@ -700,7 +700,7 @@ func (rp *ProcessorService) setField(structPath string, structPtr interface{}, f
 		// TODO: make sure that nils etc. are handled properly
 		// TODO: also translate the display field
 		// TODO: make a function insetad of much code within setFied
-		bindingValueSet, err := rp.structDefSvc.GetValueSetForPath(fhirPath)
+		bindingValueSet, err := rp.structDefSvc.GetBindingValueSet(fhirPath)
 		if err != nil {
 			rp.log.Error().Err(err).Msg("Failed to get ValueSet")
 		}

@@ -93,7 +93,7 @@ func (svc *StructureDefinitionService) GetStructureDefinition(identifier string)
 }
 
 // GetValueSetForPath returns the ValueSet URL for a given path
-func (svc *StructureDefinitionService) GetValueSetForPath(path string) (string, error) {
+func (svc *StructureDefinitionService) GetBindingValueSet(path string) (string, error) {
 	svc.mu.RLock()
 	defer svc.mu.RUnlock()
 
