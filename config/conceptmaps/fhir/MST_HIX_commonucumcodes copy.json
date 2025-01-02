@@ -1,0 +1,10 @@
+{
+  "url": "http://decor.nictiz.nl/decor/services/",
+  "identifier": {
+    "value": "sansa-"
+  },
+  "name": "MST_HIX_commonucumcodes copy",
+  "status": "draft",
+  "date": "2024-10-18T08:27:07",
+  "resourceType": "ConceptMap"
+}

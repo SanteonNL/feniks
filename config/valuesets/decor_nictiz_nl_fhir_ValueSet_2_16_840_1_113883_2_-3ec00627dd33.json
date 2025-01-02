@@ -1,0 +1,129 @@
+{
+  "originalUrl": "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.124.11.101--20240815133058",
+  "valueSet": {
+    "id": "2.16.840.1.113883.2.4.3.11.60.124.11.101--20240815133058",
+    "meta": {
+      "lastUpdated": "2024-11-19T20:30:03.366+01:00",
+      "profile": [
+        "http://hl7.org/fhir/StructureDefinition/shareablevalueset"
+      ]
+    },
+    "extension": [
+      {
+        "url": "http://hl7.org/fhir/StructureDefinition/resource-effectivePeriod",
+        "valuePeriod": {
+          "start": "2024-08-15T13:30:58Z"
+        }
+      }
+    ],
+    "url": "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.124.11.101--20240815133058",
+    "identifier": [
+      {
+        "use": "official",
+        "system": "urn:ietf:rfc:3986",
+        "value": "urn:oid:2.16.840.1.113883.2.4.3.11.60.124.11.101"
+      }
+    ],
+    "version": "2024-08-15T13:30:58",
+    "name": "LL3324_2",
+    "title": "GeslachtBijGeboorteCodelijst_LL3324-2",
+    "status": "draft",
+    "experimental": false,
+    "publisher": "Santeon",
+    "contact": [
+      {
+        "name": "Santeon",
+        "telecom": [
+          {
+            "system": "email",
+            "value": "j.hendrikx@santeon.nl"
+          }
+        ]
+      }
+    ],
+    "description": "GeslachtBijGeboorteCodelijst_LL3324-2",
+    "immutable": false,
+    "compose": {
+      "include": [
+        {
+          "system": "http://loinc.org",
+          "concept": [
+            {
+              "code": "LA2-8",
+              "display": "Male",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Male"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Man"
+                }
+              ]
+            },
+            {
+              "code": "LA3-6",
+              "display": "Female",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Female"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Vrouw"
+                }
+              ]
+            },
+            {
+              "code": "LA4489-6",
+              "display": "Unknown",
+              "designation": [
+                {
+                  "language": "en-US",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Unknown"
+                },
+                {
+                  "language": "nl-NL",
+                  "use": {
+                    "system": "http://snomed.info/sct",
+                    "code": "900000000000013009",
+                    "display": "Synonym"
+                  },
+                  "value": "Onbekend"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "resourceType": "ValueSet"
+  }
+}

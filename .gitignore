@@ -21,6 +21,13 @@
 # Go workspace file
 go.work
 
-/output/
+/output/temp/
 
 .env
+
+cmd/artdecor/conceptmap_*.csv
+output/temp/*.json
+output/temp/*.json
+
+
+config/conceptmaps/fhir/converted/
