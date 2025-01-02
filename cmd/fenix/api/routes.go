@@ -1,53 +1,63 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/SanteonNL/fenix/cmd/fenix/datasource"
+	"github.com/SanteonNL/fenix/cmd/fenix/fhir/bundle"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/searchparameter"
 	"github.com/SanteonNL/fenix/cmd/fenix/processor"
 	"github.com/SanteonNL/fenix/cmd/fenix/types"
-	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/rs/zerolog"
 )
 
+// Add bundleCache to FHIRRouter struct
 type FHIRRouter struct {
 	searchParamService *searchparameter.SearchParameterService
 	processorService   *processor.ProcessorService
+	bundleService      *bundle.BundleService
+	dataSourceService  *datasource.DataSourceService
+	bundleCache        *bundle.BundleCache // Add this
+	log                zerolog.Logger
 }
 
-func NewFHIRRouter(searchParamService *searchparameter.SearchParameterService, processorService *processor.ProcessorService) *FHIRRouter {
+// Update NewFHIRRouter to include cache initialization
+func NewFHIRRouter(
+	searchParamService *searchparameter.SearchParameterService,
+	processorService *processor.ProcessorService,
+	dataSourceService *datasource.DataSourceService,
+	log zerolog.Logger,
+) *FHIRRouter {
+	// Initialize cache with default config
+	cacheConfig := bundle.DefaultCacheConfig()
+	bundleCache := bundle.NewBundleCache(*cacheConfig, log)
+
 	return &FHIRRouter{
 		searchParamService: searchParamService,
 		processorService:   processorService,
+		bundleService:      bundle.NewBundleService(log, cacheConfig),
+		dataSourceService:  dataSourceService,
+		bundleCache:        bundleCache,
+		log:                log,
 	}
 }
 
 func (fr *FHIRRouter) SetupRoutes() http.Handler {
 	r := chi.NewRouter()
 
-	// Middleware
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	// FHIR routes
 	r.Route("/r4", func(r chi.Router) {
-		// Metadata endpoint (CapabilityStatement)
-		// r.Get("/metadata", fr.handleMetadata)
-
-		// Dynamic resource type routes
 		r.Route("/{resourceType}", func(r chi.Router) {
-			// Type level interactions
-			r.Get("/", fr.handleSearch) // Search
-
-			// TODO: Add other id level interactions
-			// Instance level interactions
-			// r.Route("/{id}", func(r chi.Router) {
-			// 	r.Get("/", fr.handleRead) // Read
-			// })
+			r.Get("/", fr.handleSearch)
 		})
 	})
 
@@ -56,63 +66,169 @@ func (fr *FHIRRouter) SetupRoutes() http.Handler {
 
 func (fr *FHIRRouter) handleSearch(w http.ResponseWriter, r *http.Request) {
 	resourceType := chi.URLParam(r, "resourceType")
-
-	// Validate resource type exists in factory
-	if !isValidResourceType(resourceType) {
-		respondWithOperationOutcome(w, http.StatusNotFound, "error", "not-found",
-			fmt.Sprintf("Resource type %s is not supported", resourceType))
-		return
-	}
-
-	// Get and validate search parameters
 	queryParams := r.URL.Query()
-	_, invalidFilters := fr.validateSearchParameters(resourceType, queryParams)
 
-	// If there are invalid parameters, return error response
-	if len(invalidFilters) > 0 {
-		outcome := createOperationOutcome(invalidFilters)
-		respondWithJSON(w, http.StatusBadRequest, outcome)
+	// Get pagination parameters
+	pageSize, _ := strconv.Atoi(queryParams.Get("_count"))
+	offset, _ := strconv.Atoi(queryParams.Get("_offset"))
+
+	// Create search params string for cache key
+	searchParams := getSearchParams(queryParams)
+
+	// Try to get page from cache first
+	if fr.bundleCache != nil {
+		if cachedResult, found := fr.bundleCache.GetPageFromCache(resourceType, searchParams, offset, pageSize); found {
+			fr.log.Debug().
+				Str("resource_type", resourceType).
+				Str("search_params", searchParams).
+				Msg("Serving response from cache")
+
+			// Create bundle from cached result
+			fr.createAndRespondWithBundle(w, r, *cachedResult, http.StatusOK)
+			return
+		}
+	}
+
+	// If not in cache, proceed with full processing
+	searchResult := bundle.SearchResult{}
+
+	// Validate resource type
+	if !isValidResourceType(resourceType) {
+		searchResult.Issues = append(searchResult.Issues, bundle.NewNotFoundIssue(
+			fmt.Sprintf("Resource type %s is not supported", resourceType)))
+		fr.createAndRespondWithBundle(w, r, searchResult, http.StatusNotFound)
 		return
 	}
 
-	// // Process search with valid filters
-	// results, err := fr.processorService.ProcessResources(r.Context(), resourceType, validFilters)
-	// if err != nil {
-	// 	respondWithOperationOutcome(w, http.StatusInternalServerError, "error", "processing",
-	// 		fmt.Sprintf("Error processing search: %v", err))
-	// 	return
-	// }
+	// Validate search parameters
+	validFilters, invalidFilters := fr.validateSearchParameters(resourceType, queryParams)
 
-	// // Create and return bundle
-	// bundle := createSearchBundle(results, nil)
-	//respondWithJSON(w, http.StatusOK, outcome)
+	// Add any parameter validation issues
+	for _, invalidFilter := range invalidFilters {
+		issue := fr.createIssueFromFilter(invalidFilter)
+		searchResult.Issues = append(searchResult.Issues, issue)
+	}
+
+	// If there are only invalid parameters, return error response
+	if len(validFilters) == 0 && len(invalidFilters) > 0 {
+		fr.createAndRespondWithBundle(w, r, searchResult, http.StatusBadRequest)
+		return
+	}
+
+	// Process the request
+	if err := fr.processRequest(r.Context(), resourceType, &searchResult); err != nil {
+		searchResult.Issues = append(searchResult.Issues, bundle.NewProcessingError(err.Error()))
+		fr.createAndRespondWithBundle(w, r, searchResult, http.StatusInternalServerError)
+		return
+	}
+
+	// Store the complete result in cache
+	if fr.bundleCache != nil {
+		fr.bundleCache.StoreResultSet(resourceType, searchParams, searchResult)
+	}
+
+	// Return successful response
+	fr.createAndRespondWithBundle(w, r, searchResult, http.StatusOK)
 }
 
-func (fr *FHIRRouter) validateSearchParameters(resourceType string, params map[string][]string) ([]*types.Filter, []*types.Filter) {
-	var validFilters, invalidFilters []*types.Filter
-
-	for paramName, values := range params {
-		// Split parameter name and modifier (e.g., "code:in" -> "code", "in")
-		baseParam, modifier := splitParameter(paramName)
-
-		// Validate using SearchParameterService
-		filter, err := fr.searchParamService.ValidateSearchParameter(resourceType, baseParam, modifier)
-
-		if err != nil || !filter.IsValid {
-			filter.Value = values[0] // Add value for error reporting
-			invalidFilters = append(invalidFilters, filter)
-			continue
-		}
-
-		// Add value to valid filter
-		filter.Value = values[0] // Handle multiple values if needed
-		validFilters = append(validFilters, filter)
+// Helper method to process the request
+func (fr *FHIRRouter) processRequest(ctx context.Context, resourceType string, searchResult *bundle.SearchResult) error {
+	// Get query file path
+	queryFiles, err := fr.dataSourceService.FindSQLFilesInDir("queries/hix/flat", resourceType)
+	if err != nil {
+		return fmt.Errorf("failed to find query file: %v", err)
 	}
 
-	return validFilters, invalidFilters
+	// Load query file
+	if err := fr.dataSourceService.LoadQueryFile(queryFiles[0]); err != nil {
+		return fmt.Errorf("failed to load query file: %v", err)
+	}
+
+	// Execute query and get results
+	_, err = fr.dataSourceService.ReadResources(resourceType, "")
+	if err != nil {
+		return fmt.Errorf("failed to read resources: %v", err)
+	}
+
+	// Process results
+	resources, err := fr.processorService.ProcessResources(ctx, fr.dataSourceService, resourceType, "", nil)
+	if err != nil {
+		return fmt.Errorf("error processing resources: %v", err)
+	}
+
+	searchResult.Resources = resources
+	searchResult.Total = len(resources)
+
+	if len(resources) == 0 {
+		searchResult.Issues = append(searchResult.Issues, bundle.NewNotFoundIssue(
+			"No resources match the search criteria"))
+	}
+
+	return nil
+}
+
+// Helper to create issue from invalid filter
+func (fr *FHIRRouter) createIssueFromFilter(filter *types.Filter) bundle.SearchIssue {
+	switch filter.ErrorType {
+	case "unknown-parameter":
+		return bundle.NewInvalidParameterIssue(
+			fmt.Sprintf("Unknown search parameter '%s'", filter.Code))
+	case "unsupported-modifier":
+		return bundle.NewInvalidParameterIssue(
+			fmt.Sprintf("Search modifier '%s' is not supported for parameter '%s'",
+				filter.Modifier, filter.Code))
+	default:
+		return bundle.NewInvalidParameterIssue(
+			fmt.Sprintf("Invalid parameter '%s'", filter.Code))
+	}
+}
+func (fr *FHIRRouter) createAndRespondWithBundle(w http.ResponseWriter, r *http.Request, result bundle.SearchResult, status int) {
+	// Extract pagination parameters
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("_count"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("_offset"))
+
+	// Create pagination params
+	paginationParams := &bundle.PaginationParams{
+		PageSize:     pageSize,
+		PageOffset:   offset,
+		BaseURL:      getBaseURL(r),
+		ResourceType: chi.URLParam(r, "resourceType"),
+		SearchParams: getSearchParams(r.URL.Query()),
+	}
+
+	// Create bundle with pagination
+	bundle, err := fr.bundleService.CreateSearchBundle(result, paginationParams)
+	if err != nil {
+		fr.log.Error().Err(err).Msg("Failed to create search bundle")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	respondWithJSON(w, status, bundle)
 }
 
 // Helper functions
+
+func getBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s/r4", scheme, r.Host)
+}
+
+func getSearchParams(params map[string][]string) string {
+	// Filter out pagination parameters
+	var queryParts []string
+	for key, values := range params {
+		if key != "_count" && key != "_offset" {
+			for _, value := range values {
+				queryParts = append(queryParts, fmt.Sprintf("%s=%s", key, value))
+			}
+		}
+	}
+	return strings.Join(queryParts, "&")
+}
 
 func splitParameter(param string) (string, string) {
 	parts := strings.Split(param, ":")
@@ -127,78 +243,33 @@ func isValidResourceType(resourceType string) bool {
 	return exists
 }
 
+func (fr *FHIRRouter) validateSearchParameters(resourceType string, params map[string][]string) ([]*types.Filter, []*types.Filter) {
+	var validFilters, invalidFilters []*types.Filter
+
+	for paramName, values := range params {
+		// Skip pagination parameters
+		if paramName == "_count" || paramName == "_offset" {
+			continue
+		}
+
+		baseParam, modifier := splitParameter(paramName)
+		filter, err := fr.searchParamService.ValidateSearchParameter(resourceType, baseParam, modifier)
+
+		if err != nil || !filter.IsValid {
+			filter.Value = values[0]
+			invalidFilters = append(invalidFilters, filter)
+			continue
+		}
+
+		filter.Value = values[0]
+		validFilters = append(validFilters, filter)
+	}
+
+	return validFilters, invalidFilters
+}
+
 func respondWithJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/fhir+json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
 }
-
-func respondWithOperationOutcome(w http.ResponseWriter, status int, severity string, code string, diagnostics string) {
-	// Convert string to IssueSeverity type
-	var issueSeverity fhir.IssueSeverity
-	if err := issueSeverity.UnmarshalJSON([]byte(`"` + severity + `"`)); err != nil {
-		// Default to error if unmarshal fails
-		issueSeverity = fhir.IssueSeverityError
-	}
-
-	// Convert string to IssueType
-	var issueType fhir.IssueType
-	if err := issueType.UnmarshalJSON([]byte(`"` + code + `"`)); err != nil {
-		// Default to processing if unmarshal fails
-		issueType = fhir.IssueTypeProcessing
-	}
-
-	outcome := &fhir.OperationOutcome{
-		Issue: []fhir.OperationOutcomeIssue{
-			{
-				Severity:    issueSeverity,
-				Code:        issueType,
-				Diagnostics: &diagnostics,
-			},
-		},
-	}
-
-	respondWithJSON(w, status, outcome)
-}
-
-// createOperationOutcome creates an OperationOutcome from invalid filters
-func createOperationOutcome(invalidFilters []*types.Filter) *fhir.OperationOutcome {
-	outcome := &fhir.OperationOutcome{
-		Issue: make([]fhir.OperationOutcomeIssue, 0),
-	}
-
-	for _, filter := range invalidFilters {
-		issue := fhir.OperationOutcomeIssue{
-			Severity: fhir.IssueSeverityError,
-		}
-
-		switch filter.ErrorType {
-		case "unknown-parameter":
-			issue.Code = fhir.IssueTypeNotSupported
-			diagnostics := fmt.Sprintf("Unknown search parameter '%s'", filter.Code)
-			issue.Diagnostics = &diagnostics
-			issue.Expression = []string{filter.Code}
-
-		case "unsupported-modifier":
-			issue.Code = fhir.IssueTypeNotSupported
-			diagnostics := fmt.Sprintf("Search modifier '%s' is not supported for parameter '%s'", filter.Modifier, filter.Code)
-			issue.Diagnostics = &diagnostics
-			issue.Expression = []string{fmt.Sprintf("%s:%s", filter.Code, filter.Modifier)}
-
-		default:
-			issue.Code = fhir.IssueTypeInvalid
-			diagnostics := fmt.Sprintf("Invalid parameter '%s'", filter.Code)
-			issue.Diagnostics = &diagnostics
-			issue.Expression = []string{filter.Code}
-		}
-
-		outcome.Issue = append(outcome.Issue, issue)
-	}
-
-	return outcome
-}
-
-// Example usage:
-// GET /fhir/Observation?code:in=http://loinc.org|8480-6
-// GET /fhir/Patient?gender=male
-// GET /fhir/Condition?code:text=headache

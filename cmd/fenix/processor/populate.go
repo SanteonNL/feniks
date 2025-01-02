@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/SanteonNL/fenix/cmd/fenix/datasource"
+	"github.com/SanteonNL/fenix/cmd/fenix/types"
 	"github.com/SanteonNL/fenix/models/fhir"
 )
 
@@ -15,12 +16,12 @@ import (
 type ProcessedPaths map[string]bool
 
 // populateResourceStruct maintains your current population logic
-func (p *ProcessorService) populateResourceStruct(value reflect.Value, filter *Filter) (bool, error) {
+func (p *ProcessorService) populateResourceStruct(value reflect.Value, filter []*types.Filter) (bool, error) {
 	return p.determinePopulateType(p.resourceType, value, "", filter)
 }
 
 // determinePopulateType handles different field types
-func (p *ProcessorService) determinePopulateType(structPath string, value reflect.Value, parentID string, filter *Filter) (bool, error) {
+func (p *ProcessorService) determinePopulateType(structPath string, value reflect.Value, parentID string, filter []*types.Filter) (bool, error) {
 	//p.log.Debug().Str("structPath", structPath).Str("value.Kind()", value.Kind().String()).Msg("Determining populate type")
 	p.log.Debug().
 		Str("structPath", structPath).
@@ -53,7 +54,7 @@ func (p *ProcessorService) determinePopulateType(structPath string, value reflec
 }
 
 // Modify populateSlice to mark processed paths
-func (p *ProcessorService) populateSlice(structPath string, value reflect.Value, parentID string, rows []datasource.RowData, filter *Filter) (bool, error) {
+func (p *ProcessorService) populateSlice(structPath string, value reflect.Value, parentID string, rows []datasource.RowData, filter []*types.Filter) (bool, error) {
 	p.log.Debug().
 		Str("structPath", structPath).
 		Str("parentID", parentID).
@@ -118,7 +119,7 @@ func (p *ProcessorService) populateSlice(structPath string, value reflect.Value,
 }
 
 // populateStruct handles struct population with filter integration
-func (p *ProcessorService) populateStruct(path string, value reflect.Value, parentID string, rows []datasource.RowData, filter *Filter) (bool, error) {
+func (p *ProcessorService) populateStruct(path string, value reflect.Value, parentID string, rows []datasource.RowData, filter []*types.Filter) (bool, error) {
 	p.log.Debug().
 		Str("path", path).
 		Str("parentID", parentID).
@@ -156,7 +157,7 @@ func (p *ProcessorService) populateStruct(path string, value reflect.Value, pare
 
 // Part 1: Struct and Nested Fields
 // populateStructAndNestedFields handles both direct and nested field population
-func (p *ProcessorService) populateStructAndNestedFields(structPath string, value reflect.Value, row datasource.RowData, filter *Filter) (bool, error) {
+func (p *ProcessorService) populateStructAndNestedFields(structPath string, value reflect.Value, row datasource.RowData, filter []*types.Filter) (bool, error) {
 	// First populate and filter struct fields
 	structPassed, err := p.populateStructFields(structPath, value.Addr().Interface(), row, filter)
 	if err != nil {
@@ -173,7 +174,7 @@ func (p *ProcessorService) populateStructAndNestedFields(structPath string, valu
 
 // Modify populateNestedFields to check processed paths
 // populateNestedFields handles nested field population
-func (p *ProcessorService) populateNestedFields(parentPath string, parentValue reflect.Value, parentID string, filter *Filter) (bool, error) {
+func (p *ProcessorService) populateNestedFields(parentPath string, parentValue reflect.Value, parentID string, filter []*types.Filter) (bool, error) {
 	anyFieldPassed := false
 
 	for i := 0; i < parentValue.NumField(); i++ {
@@ -212,7 +213,7 @@ func (p *ProcessorService) populateNestedFields(parentPath string, parentValue r
 	return anyFieldPassed, nil
 }
 
-func (p *ProcessorService) populateStructFields(structPath string, structPtr interface{}, row datasource.RowData, filter *Filter) (bool, error) {
+func (p *ProcessorService) populateStructFields(structPath string, structPtr interface{}, row datasource.RowData, filter []*types.Filter) (bool, error) {
 	structValue := reflect.ValueOf(structPtr).Elem()
 	structType := structValue.Type()
 	processedFields := make(map[string]bool)
@@ -859,7 +860,7 @@ func getByteValue(v interface{}) ([]byte, error) {
 }
 
 // setBasicType handles basic type field population
-func (p *ProcessorService) setBasicType(path string, field reflect.Value, parentID string, rows []datasource.RowData, filter *Filter) (bool, error) {
+func (p *ProcessorService) setBasicType(path string, field reflect.Value, parentID string, rows []datasource.RowData, filter []*types.Filter) (bool, error) {
 	p.log.Debug().Str("path", path).Msg("Setting basic type")
 	for _, row := range rows {
 		if row.ParentID == parentID || parentID == "" {

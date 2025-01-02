@@ -17,8 +17,51 @@ type OutputManager struct {
 	log       zerolog.Logger
 }
 
+// archiveExistingOutputs moves existing output directories to an archive folder
+func archiveExistingOutputs(baseDir string) error {
+	// Create archive directory if it doesn't exist
+	archiveDir := filepath.Join(baseDir, "archive")
+	if err := os.MkdirAll(archiveDir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create archive directory: %w", err)
+	}
+
+	// Read directory contents
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		return fmt.Errorf("failed to read base directory: %w", err)
+	}
+
+	// Move each timestamped directory to archive
+	for _, entry := range entries {
+		// Skip if it's not a directory or if it's the archive directory
+		if !entry.IsDir() || entry.Name() == "archive" {
+			continue
+		}
+
+		// Check if the directory name matches timestamp format (YYYYMMDD_HHMMSS)
+		if len(entry.Name()) != 15 { // Length of "YYYYMMDD_HHMMSS"
+			continue
+		}
+
+		oldPath := filepath.Join(baseDir, entry.Name())
+		newPath := filepath.Join(archiveDir, entry.Name())
+
+		// Move the directory
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return fmt.Errorf("failed to move directory %s to archive: %w", entry.Name(), err)
+		}
+	}
+
+	return nil
+}
+
 // NewOutputManager creates a new OutputManager with the given base directory
 func NewOutputManager(baseDir string, log zerolog.Logger) (*OutputManager, error) {
+	// Archive existing output directories
+	if err := archiveExistingOutputs(baseDir); err != nil {
+		return nil, fmt.Errorf("failed to archive existing outputs: %w", err)
+	}
+
 	timestamp := time.Now().Format("20060102_150405")
 
 	// Create the base output directory with timestamp

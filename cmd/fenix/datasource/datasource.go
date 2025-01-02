@@ -44,9 +44,15 @@ func NewDataSourceService(db *sqlx.DB, log zerolog.Logger) *DataSourceService {
 // LoadQueryFile loads a single query file
 func (svc *DataSourceService) LoadQueryFile(filePath string) error {
 	// Get resource type from filename (e.g., "patient_query.sql" -> "Patient")
+	fileName := filepath.Base(filePath)
+	parts := strings.Split(fileName, "_")
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid query file name format: %s", fileName)
+	}
+
 	resourceType := strings.TrimSuffix(
-		strings.Title(strings.Split(filepath.Base(filePath), "_")[0]),
-		filepath.Ext(filePath),
+		strings.Title(parts[0]),
+		filepath.Ext(fileName),
 	)
 
 	file, err := os.Open(filePath)
@@ -354,6 +360,31 @@ func (ds *DataSourceService) removeIndex(part string) string {
 		return part[:index]
 	}
 	return part
+}
+
+// findSQLFilesInDir recursively searches for SQL files in a directory
+func (ds *DataSourceService) FindSQLFilesInDir(dir string, resourceType string) ([]string, error) {
+	var files []string
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory %s: %w", dir, err)
+	}
+
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		if entry.IsDir() {
+			subFiles, err := ds.FindSQLFilesInDir(path, resourceType)
+			if err != nil {
+				continue
+			}
+			files = append(files, subFiles...)
+		} else if strings.HasPrefix(strings.ToLower(entry.Name()), strings.ToLower(resourceType)) &&
+			strings.HasSuffix(strings.ToLower(entry.Name()), ".sql") {
+			files = append(files, path)
+		}
+	}
+
+	return files, nil
 }
 
 // Example usage:

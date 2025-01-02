@@ -12,6 +12,7 @@ import (
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/structuredefinition"
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/valueset"
 	"github.com/SanteonNL/fenix/cmd/fenix/output"
+	"github.com/SanteonNL/fenix/cmd/fenix/types"
 	"github.com/rs/zerolog"
 )
 
@@ -64,7 +65,7 @@ func NewProcessorService(config ProcessorConfig) (*ProcessorService, error) {
 }
 
 // ProcessResources processes resources with filtering
-func (p *ProcessorService) ProcessResources(ctx context.Context, ds *datasource.DataSourceService, resourceType string, patientID string, filter *Filter) ([]interface{}, error) {
+func (p *ProcessorService) ProcessResources(ctx context.Context, ds *datasource.DataSourceService, resourceType string, patientID string, filter []*types.Filter) ([]interface{}, error) {
 	results, err := ds.ReadResources(resourceType, patientID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read resources: %w", err)
@@ -96,7 +97,7 @@ func (p *ProcessorService) ProcessResources(ctx context.Context, ds *datasource.
 }
 
 // ProcessSingleResource processes a single resource
-func (p *ProcessorService) ProcessSingleResource(result datasource.ResourceResult, filter *Filter) (interface{}, error) {
+func (p *ProcessorService) ProcessSingleResource(result datasource.ResourceResult, filter []*types.Filter) (interface{}, error) {
 	// Create resource
 	resource, err := p.createResource()
 	if err != nil {

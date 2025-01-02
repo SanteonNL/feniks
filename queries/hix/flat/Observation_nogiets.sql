@@ -59,7 +59,7 @@ FROM
 -- WHERE  <metingid> ?id
 -- WHERE  <geslachstveldin HIX> ?gender (niet implementeren)
 -- WHERE   datum ?date 
-LIMIT 1;
+LIMIT 5;
 
 
 

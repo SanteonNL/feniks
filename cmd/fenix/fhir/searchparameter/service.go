@@ -116,11 +116,10 @@ func (svc *SearchParameterService) GetAllPathSearchTypes() map[string]map[string
 	return result
 }
 
-
 // ValidateSearchParameter validates both the search parameter and its modifier
 func (svc *SearchParameterService) ValidateSearchParameter(resourceType string, paramCode string, modifier string) (*types.Filter, error) {
 	svc.mu.RLock()
-	defer svc.mu.RUnloc
+	defer svc.mu.RUnlock()
 	// First check if the search parameter exists and get its type
 	isValid, searchType := svc.IsValidResourceSearchParameter(resourceType, paramCode)
 	if !isValid {

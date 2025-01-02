@@ -17,6 +17,7 @@ import (
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/valueset"
 	"github.com/SanteonNL/fenix/cmd/fenix/output"
 	"github.com/SanteonNL/fenix/cmd/fenix/processor"
+	"github.com/SanteonNL/fenix/cmd/fenix/types"
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
@@ -125,7 +126,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create ValueSet service")
 	}
-
+	// Create a context
 	ctx := context.Background()
 
 	// Try getting a remote ValueSet
@@ -142,7 +143,7 @@ func main() {
 	// Example: Validate a code against a ValueSet
 	coding := &fhir.Coding{
 		System: ptr("http://snomed.info/sct"),
-		Code:   ptr("22762002"),
+		Code:   ptr("227620asd02"),
 	}
 
 	result, err := valuesetService.ValidateCode(ctx, "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354", coding)
@@ -216,12 +217,12 @@ func main() {
 		fmt.Printf("SearchType: %+v\n", searchType)
 	}
 	// Process resources
-	filter := processor.Filter{
+	filter := types.Filter{
 		Code:  "identifier",
 		Value: "1s",
 	}
 
-	resources, err := processorService.ProcessResources(ctx, dataSourceService, "Patient", "12", &filter)
+	resources, err := processorService.ProcessResources(ctx, dataSourceService, "Patient", "12", []*types.Filter{&filter})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to process resources")
 
@@ -234,7 +235,7 @@ func main() {
 	}
 
 	// Create and setup router
-	router := api.NewFHIRRouter(searchParamService, processorService)
+	router := api.NewFHIRRouter(searchParamService, processorService, dataSourceService, log)
 	handler := router.SetupRoutes()
 
 	// Start server
@@ -242,20 +243,6 @@ func main() {
 	log.Info().Msgf("Starting FHIR server on port %s", port)
 	if err := http.ListenAndServe(port, handler); err != nil {
 		log.Fatal().Err(err).Msg("Server failed to start")
-	}
-
-	filterType, err := searchParamService.ValidateSearchParameter("Patient", "code", "in")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to validate search parameter")
-	} else {
-		fmt.Printf("Filter: %+v\n", filterType)
-	}
-
-	filterType, err = searchParamService.ValidateSearchParameter("Patient", "ads", "in")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to validate search parameter")
-	} else {
-		fmt.Printf("Filter: %+v\n", filterType)
 	}
 
 	endTime := time.Now()
