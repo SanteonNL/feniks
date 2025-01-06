@@ -4,7 +4,7 @@ SELECT
     '' AS resource_id,
     'Patient' AS "fhir_path",
     'adsfasdf0' AS id,
-    'male' AS "gender",
+    'M' AS "gender",
     'generated' AS "text.status",
     '<div xmlns="http://www.w3.org/1999/xhtml">Patient information</div>' AS "text.div",
     'true' AS "active",
@@ -25,7 +25,7 @@ SELECT
     'usual' AS "identifier[0].use",
     'http://fhir.nl/fhir/NamingSystem/bsn' AS "identifier[1].system",
     '1s' AS "identifier[1].value",
-    'adsfasdf' AS "contact.gender"
+    'M' AS "contact.gender"
 FROM
     patient
 -- WHERE identificatienummer ?id
