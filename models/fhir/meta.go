@@ -22,7 +22,7 @@ type Meta struct {
 	Id          *string     `bson:"id,omitempty" json:"id,omitempty"`
 	Extension   []Extension `bson:"extension,omitempty" json:"extension,omitempty"`
 	VersionId   *string     `bson:"versionId,omitempty" json:"versionId,omitempty"`
-	LastUpdated *string     `bson:"lastUpdated,omitempty" json:"lastUpdated,omitempty"`
+	LastUpdated *DateTime     `bson:"lastUpdated,omitempty" json:"lastUpdated,omitempty"`
 	Source      *string     `bson:"source,omitempty" json:"source,omitempty"`
 	Profile     []string    `bson:"profile,omitempty" json:"profile,omitempty"`
 	Security    []Coding    `bson:"security,omitempty" json:"security,omitempty"`

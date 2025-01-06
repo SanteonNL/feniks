@@ -1,0 +1,73 @@
+{
+    "resourceType": "ConceptMap",
+    "id": "MST_HIX_observation_category_test",
+    "meta": {
+        "lastUpdated": "2024-08-15T13:32:28Z",
+        "source": "http://decor.nictiz.nl/fhir/4.0/san-gen-"
+    },
+    "language": "en-US",
+    "identifier": {
+        "system": "urn:ietf:rfc:3986",
+        "value": "urn:oid:2.16.840.1.113883.2.4.3.11.60.124.24.6"
+    },
+    "name": "GeslachtZibtoLOINC",
+    "title": "GeslachtZibtoLOINC",
+    "status": "draft",
+    "experimental": false,
+    "date": "2024-08-15T13:32:04Z",
+    "publisher": "Santeon",
+    "contact": [
+        {
+            "name": "Santeon",
+            "telecom": [
+                {
+                    "system": "email",
+                    "value": "j.hendrikx@santeon.nl"
+                }
+            ]
+        }
+    ],
+    "sourceUri": "http://decor.nictiz.nl/fhir/4.0/san-gen-/ValueSet/2.16.840.1.113883.2.4.3.11.60.40.2.0.1.1",
+    "targetUri": "http://hl7.org/fhir/ValueSet/observation-category",
+    "group": [
+        {
+            "source": "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.40.2.0.1.1--20200901000000",
+            "target": "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.124.11.101--20240815133058",
+            "element": [
+                {
+                    "code": "laboratoryA",
+                    "display": "laboratoryA",
+                    "target": [
+                        {
+                            "code": "laboratory1",
+                            "display": "laboratory1",
+                            "equivalence": "equal"
+                        }
+                    ]
+                },
+                {
+                    "code": "*",
+                    "display": "*",
+                    "target": [
+                        {
+                            "code": "unknown",
+                            "display": "Unknown",
+                            "equivalence": "equal"
+                        }
+                    ]
+                },
+                {
+                    "code": "UNK",
+                    "display": "Unknown",
+                    "target": [
+                        {
+                            "code": "LA4489-6",
+                            "display": "Unknown",
+                            "equivalence": "equal"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

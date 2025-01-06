@@ -1,0 +1,80 @@
+{
+  "originalUrl": "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.70--20240808092437",
+  "valueSet": {
+    "id": "2.16.840.1.113883.2.4.3.11.60.909.11.70--20240808092437",
+    "meta": {
+      "lastUpdated": "2024-11-19T20:40:21.158+01:00",
+      "profile": [
+        "http://hl7.org/fhir/StructureDefinition/shareablevalueset"
+      ]
+    },
+    "extension": [
+      {
+        "url": "http://hl7.org/fhir/StructureDefinition/resource-effectivePeriod",
+        "valuePeriod": {
+          "start": "2024-08-08T09:24:37Z"
+        }
+      }
+    ],
+    "url": "http://decor.nictiz.nl/fhir/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.70--20240808092437",
+    "identifier": [
+      {
+        "use": "official",
+        "system": "urn:ietf:rfc:3986",
+        "value": "urn:oid:2.16.840.1.113883.2.4.3.11.60.909.11.70"
+      }
+    ],
+    "version": "2024-08-08T09:24:37",
+    "name": "CupmaatCodelijst_01",
+    "title": "CupmaatCodelijst_01",
+    "status": "draft",
+    "experimental": false,
+    "publisher": "Santeon",
+    "description": "CupmaatCodelijst_01",
+    "immutable": false,
+    "copyright": "This artefact includes content from SNOMED Clinical Terms® (SNOMED CT®) which is copyright of the International Health Terminology Standards Development Organisation (IHTSDO). Implementers of these artefacts must have the appropriate SNOMED CT Affiliate license - for more information contact http://www.snomed.org/snomed-ct/getsnomed-ct or info@snomed.org.",
+    "compose": {
+      "include": [
+        {
+          "system": "http://decor.nictiz.nl/fhir/CodeSystem/2.16.840.1.113883.2.4.3.11.60.909.5.9--20240808085615",
+          "concept": [
+            {
+              "extension": [
+                {
+                  "url": "http://hl7.org/fhir/StructureDefinition/valueset-concept-comments",
+                  "valueString": "Cupmaat\n                        AA"
+                }
+              ],
+              "code": "AC_000001",
+              "display": "CupAA"
+            },
+            {
+              "extension": [
+                {
+                  "url": "http://hl7.org/fhir/StructureDefinition/valueset-concept-comments",
+                  "valueString": "Cupmaat\n                        A"
+                }
+              ],
+              "code": "AC_000002",
+              "display": "CupA"
+            },
+            {
+              "code": "AC_000003",
+              "display": "CupB"
+            }
+          ]
+        },
+        {
+          "system": "http://snomed.info/sct",
+          "concept": [
+            {
+              "code": "201066002",
+              "display": "Skin striae (disorder)"
+            }
+          ]
+        }
+      ]
+    },
+    "resourceType": "ValueSet"
+  }
+}
