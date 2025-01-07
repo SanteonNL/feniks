@@ -82,7 +82,7 @@ func (p *ProcessorService) ProcessResources(ctx context.Context, ds *datasource.
 		p.processedPaths = make(map[string]bool)
 		p.result = result
 		p.resourceType = resourceType // Set from parameter directly
-
+		p.log.Debug().Str("resourceType", resourceType).Msg("Processing resource \n")
 		processed, err := p.ProcessSingleResource(result, filter)
 		if err != nil {
 			p.log.Error().Err(err).Msg("Error processing resource")
@@ -116,7 +116,10 @@ func (p *ProcessorService) ProcessSingleResource(result datasource.ResourceResul
 	}
 
 	if !passed {
+		p.log.Debug().Msg("Resource did not pass filter")
 		return nil, nil
+	} else {
+		p.log.Debug().Msg("Resource passed filter")
 	}
 
 	return resource, nil

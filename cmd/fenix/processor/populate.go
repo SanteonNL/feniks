@@ -17,7 +17,12 @@ type ProcessedPaths map[string]bool
 
 // populateResourceStruct maintains your current population logic
 func (p *ProcessorService) populateResourceStruct(value reflect.Value, filter []*types.Filter) (bool, error) {
+	p.log.Debug().
+		Str("resourceType", p.resourceType).
+		Msg("Populating resource struct")
+
 	return p.determinePopulateType(p.resourceType, value, "", filter)
+
 }
 
 // determinePopulateType handles different field types
@@ -53,69 +58,70 @@ func (p *ProcessorService) determinePopulateType(structPath string, value reflec
 	}
 }
 
-// Modify populateSlice to mark processed paths
-func (p *ProcessorService) populateSlice(structPath string, value reflect.Value, parentID string, rows []datasource.RowData, filter []*types.Filter) (bool, error) {
+func (p *ProcessorService) populateSlice(structPath string, value reflect.Value, parentID string, rows []datasource.RowData, filters []*types.Filter) (bool, error) {
 	p.log.Debug().
 		Str("structPath", structPath).
 		Str("parentID", parentID).
 		Int("total_rows", len(rows)).
 		Msg("Populating slice")
 
-	// Mark this path as processed
 	p.processedPaths[structPath] = true
-
-	// Create slice to hold all elements
 	allElements := reflect.MakeSlice(value.Type(), 0, len(rows))
-	anyElementPassed := false
-
-	// Track processed parent IDs to avoid duplicates
 	processedParentIDs := make(map[string]bool)
 
+	// Check if any filters apply to this path
+	hasApplicableFilters := false
+	for _, filter := range filters {
+		_, exists := p.pathInfoSvc.GetSearchTypeByPathAndCode(structPath, filter.Code)
+		if exists {
+			hasApplicableFilters = true
+			break
+		}
+	}
+
+	// Track if we successfully populated anything
+	anyElementPopulated := false
+
 	for _, row := range rows {
-		// Process rows without a parent ID or with a matching parent ID
-		// Importantly, allow multiple entries with different parent IDs
 		if row.ParentID == parentID || parentID == "" {
-			// Prevent processing the same parent ID multiple times
 			if processedParentIDs[row.ParentID] {
 				continue
 			}
 			processedParentIDs[row.ParentID] = true
 
-			p.log.Debug().
-				Str("rowID", row.ID).
-				Str("rowParentID", row.ParentID).
-				Msg("Processing slice row")
-
 			valueElement := reflect.New(value.Type().Elem()).Elem()
 
-			// Populate the element
-			passed, err := p.populateStructAndNestedFields(structPath, valueElement, row, filter)
+			// Always populate the element
+			populated, err := p.populateStructAndNestedFields(structPath, valueElement, row, filters)
 			if err != nil {
-				p.log.Error().
-					Err(err).
-					Str("structPath", structPath).
-					Msg("Error populating slice element")
 				return false, fmt.Errorf("error populating slice element: %w", err)
 			}
 
-			if passed {
-				anyElementPassed = true
+			if populated {
+				anyElementPopulated = true
 			}
 
-			// Always add element to the slice
+			// Always add the element to the slice since filters don't apply
 			allElements = reflect.Append(allElements, valueElement)
 		}
 	}
 
-	// Set the complete slice with all elements
+	// Set the slice with all elements
 	value.Set(allElements)
 
 	p.log.Debug().
-		Bool("anyElementPassed", anyElementPassed).
+		Bool("hasApplicableFilters", hasApplicableFilters).
+		Bool("anyElementPopulated", anyElementPopulated).
 		Int("totalElements", allElements.Len()).
 		Msg("Slice population completed")
 
-	return anyElementPassed, nil
+	// If no filters apply to this path, return true if we populated anything
+	if !hasApplicableFilters {
+		return allElements.Len() > 0, nil
+	}
+
+	// Otherwise return based on if elements passed filters
+	return anyElementPopulated, nil
 }
 
 // populateStruct handles struct population with filter integration
@@ -125,6 +131,7 @@ func (p *ProcessorService) populateStruct(path string, value reflect.Value, pare
 		Str("parentID", parentID).
 		Int("rowCount", len(rows)).
 		Msg("Populating struct")
+
 	anyFieldPopulated := false
 	processedRows := make(map[string]bool)
 
@@ -139,16 +146,24 @@ func (p *ProcessorService) populateStruct(path string, value reflect.Value, pare
 			if err != nil {
 				return false, fmt.Errorf("failed to populate struct fields at %s: %w", path, err)
 			}
+			// If struct fields didn't pass validation, return false immediately
+			if !structPassed {
+				p.log.Debug().Str("structPath", path).Msg("Struct did not pass filter")
+				return false, nil
+			}
 
 			// Then handle nested fields
 			nestedPassed, err := p.populateNestedFields(path, value, row.ID, filter)
 			if err != nil {
 				return false, err
 			}
-
-			if structPassed || nestedPassed {
-				anyFieldPopulated = true
+			// If nested fields didn't pass validation, return false immediately
+			if !nestedPassed {
+				return false, nil
 			}
+
+			// Only mark as populated if both passed
+			anyFieldPopulated = true
 		}
 	}
 
@@ -165,6 +180,7 @@ func (p *ProcessorService) populateStructAndNestedFields(structPath string, valu
 	}
 
 	if !structPassed {
+		p.log.Debug().Str("structPath", structPath).Msg("Struct did not pass filter")
 		return false, nil
 	}
 
@@ -246,7 +262,7 @@ func (p *ProcessorService) populateStructFields(structPath string, structPtr int
 				err := p.setCodeableConceptField(field, codingPath, fieldName, row.ID, codingRows, processedFields)
 				if err != nil {
 					// Check if this field has a filter
-					passed, err := true, error(nil)
+					passed, err := p.checkFilter(field, codingPath, filter)
 					if err != nil {
 						return false, err
 					}
@@ -276,7 +292,7 @@ func (p *ProcessorService) populateStructFields(structPath string, structPtr int
 				}
 
 				// Check filter if exists
-				passed, err := true, error(nil)
+				passed, err := p.checkFilter(field, codingPath, filter)
 				if err != nil {
 					return false, err
 				}
@@ -307,14 +323,14 @@ func (p *ProcessorService) populateStructFields(structPath string, structPtr int
 					return false, fmt.Errorf("failed to set field %s: %w", fieldName, err)
 				}
 
-				fieldPath := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
-				passed, err := true, error(nil)
+				path := fmt.Sprintf("%s.%s", structPath, strings.ToLower(fieldName))
+				passed, err := p.checkFilter(structValue.Field(i), path, filter)
 				if err != nil {
 					return false, fmt.Errorf("failed to check filter for field %s: %w", fieldName, err)
 				}
 				if !passed {
 					p.log.Debug().
-						Str("fieldPath", fieldPath).
+						Str("fieldPath", path).
 						Msg("Field did not pass filter")
 					return false, nil
 				}
@@ -872,7 +888,7 @@ func (p *ProcessorService) setBasicType(path string, field reflect.Value, parent
 				}
 
 				// Check filter if exists
-				passed, err := true, error(nil)
+				passed, err := p.checkFilter(field, path, filter)
 				if err != nil {
 					p.log.Error().Err(err).Msg("Filter check failed")
 					return false, err
