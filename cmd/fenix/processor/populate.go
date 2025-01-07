@@ -671,7 +671,7 @@ func (rp *ProcessorService) setField(structPath string, structPtr interface{}, f
 		field = field.Elem() // Dereference for further processing
 	}
 
-	rp.log.Debug().Str("structPath", structPath).Str("fieldName", fieldName).Str("fieldType", field.Type().String()).Interface("value", value).Msg("Setting field")
+	//rp.log.Debug().Str("structPath", structPath).Str("fieldName", fieldName).Str("fieldType", field.Type().String()).Interface("value", value).Msg("Setting field")
 
 	// Now check for special types after potentially dereferencing
 	switch field.Type().String() {
@@ -732,7 +732,7 @@ func (rp *ProcessorService) setField(structPath string, structPtr interface{}, f
 
 	// Check if type implements UnmarshalJSON
 	if unmarshaler, ok := field.Addr().Interface().(json.Unmarshaler); ok {
-		rp.log.Debug().Str("field", field.Type().String()).Msg("Setting field with UnmarshalJSON")
+		//rp.log.Debug().Str("field", field.Type().String()).Msg("Setting field with UnmarshalJSON")
 		var jsonBytes []byte
 		var err error
 

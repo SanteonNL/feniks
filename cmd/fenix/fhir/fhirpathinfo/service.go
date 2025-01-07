@@ -127,6 +127,6 @@ func (svc *PathInfoService) GetConceptMaps(path string) ([]string, error) {
 }
 
 // GetSearchTypeByPathAndCode delegates to the SearchParameterService to get the search type
-func (svc *PathInfoService) GetSearchTypeByPathAndCode(path string, code string) (string, error) {
+func (svc *PathInfoService) GetSearchTypeByPathAndCode(path string, code string) (string, bool) {
 	return svc.searchParamService.GetSearchTypeByPathAndCode(path, code)
 }

@@ -136,6 +136,7 @@ func (svc *DataSourceService) ReadResources(resourceType, patientID string) ([]R
 		fmt.Sprintf(":%s.id", resourceType),
 		fmt.Sprintf("'%s'", patientID))
 
+	// Execute the query and get multiple result sets
 	rows, err := svc.db.Queryx(query)
 	if err != nil {
 		return nil, fmt.Errorf("error executing query: %w", err)
@@ -145,24 +146,31 @@ func (svc *DataSourceService) ReadResources(resourceType, patientID string) ([]R
 	// Map to hold resources by their resource_id
 	resources := make(map[string]ResourceResult)
 
-	for rows.Next() {
-		row := make(map[string]interface{})
-		if err := rows.MapScan(row); err != nil {
-			return nil, fmt.Errorf("error scanning row: %w", err)
-		}
-
-		// Remove NULL values
-		for key, value := range row {
-			if value == nil {
-				delete(row, key)
+	for {
+		for rows.Next() {
+			row := make(map[string]interface{})
+			if err := rows.MapScan(row); err != nil {
+				return nil, fmt.Errorf("error scanning row: %w", err)
 			}
+
+			// Remove NULL values
+			for key, value := range row {
+				if value == nil {
+					delete(row, key)
+				}
+			}
+
+			svc.processRow(row, resources)
 		}
 
-		svc.processRow(row, resources)
-	}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("error iterating over rows: %w", err)
+		}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over rows: %w", err)
+		// Check if there are more result sets
+		if !rows.NextResultSet() {
+			break
+		}
 	}
 
 	// Convert map to slice

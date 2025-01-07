@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -10,10 +9,10 @@ import (
 	"github.com/SanteonNL/fenix/models/fhir"
 )
 
-func (p *ProcessorService) checkFilter(ctx context.Context, field reflect.Value, path string, searchType string, filter *types.Filter) (bool, error) {
+func (p *ProcessorService) checkFilter(field reflect.Value, path string, searchType string, filter *types.Filter) (bool, error) {
 	switch searchType {
 	case "token":
-		return p.checkTokenFilter(ctx, field, path, filter.Value)
+		return p.checkTokenFilter(field, path, filter.Value)
 	case "string":
 		return p.checkStringFilter(field, filter.Value)
 	case "date":
@@ -26,11 +25,11 @@ func (p *ProcessorService) checkFilter(ctx context.Context, field reflect.Value,
 	}
 }
 
-func (p *ProcessorService) checkTokenFilter(ctx context.Context, field reflect.Value, path string, filterValue string) (bool, error) {
+func (p *ProcessorService) checkTokenFilter(field reflect.Value, path string, filterValue string) (bool, error) {
 	// Get path info to check for ValueSet
 	pathInfo, err := p.pathInfoSvc.GetPathInfo(path)
 	if err == nil && pathInfo.ValueSet != "" {
-		return p.checkValueSetFilter(ctx, field, pathInfo.ValueSet)
+		return p.checkValueSetFilter(field, pathInfo.ValueSet)
 	}
 
 	// If no ValueSet, do direct comparison
@@ -38,14 +37,14 @@ func (p *ProcessorService) checkTokenFilter(ctx context.Context, field reflect.V
 	return code == filterValue, nil
 }
 
-func (p *ProcessorService) checkValueSetFilter(ctx context.Context, field reflect.Value, valueSetURL string) (bool, error) {
+func (p *ProcessorService) checkValueSetFilter(field reflect.Value, valueSetURL string) (bool, error) {
 	switch field.Type().String() {
 	case "fhir.Coding", "*fhir.Coding":
 		coding := getCodingFromField(field)
 		if coding == nil {
 			return false, nil
 		}
-		valid, err := p.valueSetSvc.ValidateCode(ctx, valueSetURL, coding)
+		valid, err := p.valueSetSvc.ValidateCode(valueSetURL, coding)
 		if err != nil {
 			return false, err
 		}
@@ -57,7 +56,7 @@ func (p *ProcessorService) checkValueSetFilter(ctx context.Context, field reflec
 			return false, nil
 		}
 		for _, coding := range concept.Coding {
-			valid, err := p.valueSetSvc.ValidateCode(ctx, valueSetURL, &coding)
+			valid, err := p.valueSetSvc.ValidateCode(valueSetURL, &coding)
 			if err == nil && valid.Valid {
 				return true, nil
 			}

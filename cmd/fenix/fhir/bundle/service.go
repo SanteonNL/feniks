@@ -11,7 +11,6 @@ import (
 	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/SanteonNL/fenix/util"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 // BundleService handles creation and management of FHIR bundles
@@ -60,7 +59,7 @@ func NewBundleService(log zerolog.Logger, cacheConfig *CacheConfig) *BundleServi
 
 func (s *BundleService) CreateSearchBundle(result SearchResult, params *PaginationParams) (*fhir.Bundle, error) {
 
-	s.log.Debug().Interface("result", result).Interface("params", params).Msg("CreateSearchBundle called")
+	//s.log.Debug().Interface("result", result).Interface("params", params).Msg("CreateSearchBundle called")
 
 	bundle := &fhir.Bundle{
 		Id:        util.StringPtr(fmt.Sprintf("bundle-%s", time.Now().Format("20060102150405"))),
@@ -74,7 +73,7 @@ func (s *BundleService) CreateSearchBundle(result SearchResult, params *Paginati
 		bundle.Link = s.createPaginationLinks(params, result.Total)
 	}
 
-	log.Debug().Interface("bundle", bundle.Link).Msg("Created bundle links")
+	//log.Debug().Interface("bundle", bundle.Link).Msg("Created bundle links")
 
 	// Initialize entries slice
 	totalEntries := len(result.Resources) + len(result.Issues)

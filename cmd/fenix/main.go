@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/SanteonNL/fenix/cmd/fenix/api"
@@ -18,7 +15,6 @@ import (
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/valueset"
 	"github.com/SanteonNL/fenix/cmd/fenix/output"
 	"github.com/SanteonNL/fenix/cmd/fenix/processor"
-	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
 )
@@ -123,26 +119,6 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create ProcessorService")
 	}
-
-	bundle := fhir.BundleLink{
-		Relation: "self",
-		Url:      "http://localhost:8080/r4/Observation?_count=2&code=0212",
-	}
-
-	log.Info().Interface("bundle", bundle).Msg("Bundle link created")
-
-	// Use json.Encoder with SetEscapeHTML(false) to prevent escaping
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false)
-
-	if err := encoder.Encode(bundle); err != nil {
-		log.Error().Err(err).Msg("Failed to marshal Bundle to JSON")
-		os.Exit(1)
-	}
-
-	// Log the properly escaped JSON string
-	log.Info().Msgf("Bundle JSON: %s", strings.TrimSpace(buf.String()))
 
 	// Create and setup router
 	router := api.NewFHIRRouter(searchParamService, processorService, dataSourceService, log)

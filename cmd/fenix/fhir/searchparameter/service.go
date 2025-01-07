@@ -72,16 +72,16 @@ func (svc *SearchParameterService) BuildSearchParameterIndex() error {
 }
 
 // GetSearchTypeByPathAndCode gets the search type for a path and code combination
-func (svc *SearchParameterService) GetSearchTypeByPathAndCode(path string, code string) (string, error) {
+func (svc *SearchParameterService) GetSearchTypeByPathAndCode(path string, code string) (string, bool) {
 	svc.mu.RLock()
 	defer svc.mu.RUnlock()
 
 	if codeMap, exists := svc.pathCodeMap[path]; exists {
 		if searchType, exists := codeMap[code]; exists {
-			return searchType, nil
+			return searchType, true
 		}
 	}
-	return "", fmt.Errorf("no search parameter found for path %s and code %s", path, code)
+	return "", false
 }
 
 // GetAllSearchTypesForPath returns all search types for a path

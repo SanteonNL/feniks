@@ -2,8 +2,16 @@
 
 GET {{url}}/JAPAL
 ### 
-GET {{url}}/Patient?_count=2&_offset=0
+
+
+GET {{url}}/Patient
+
+###
+GET {{url}}/Patient?gender=male
 ### 
+
+### 
+GET {{url}}/Patient?gender=female
 
 ### 
 GET {{url}}/Observation?_count=2&_offset=0&code:in:https://www.hl7.org/fhir/observation-vitalsigns.html
