@@ -21,6 +21,11 @@
 # Go workspace file
 go.work
 
+/output/
+
+
+# Environment variable files
+*.env
 /output/temp/
 
 .env
@@ -31,6 +36,3 @@ output/temp/*.json
 
 
 config/conceptmaps/fhir/converted/
-
-# Environment variable files
-*.env
