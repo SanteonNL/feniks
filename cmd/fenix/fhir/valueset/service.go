@@ -59,7 +59,7 @@ func NewValueSetService(config Config, log zerolog.Logger) (*ValueSetService, er
 	return service, nil
 }
 
-func (s *ValueSetService) GetValueSet(ctx context.Context, url string) (*fhir.ValueSet, error) {
+func (s *ValueSetService) GetValueSet(url string) (*fhir.ValueSet, error) {
 	valueSetID, source := s.parseValueSetURL(url)
 
 	s.log.Debug().
@@ -94,7 +94,7 @@ func (s *ValueSetService) GetValueSet(ctx context.Context, url string) (*fhir.Va
 
 	// If local storage failed or expired, try remote for RemoteSource
 	if source == RemoteSource {
-		valueSet, err = s.fetchFromRemote(ctx, valueSetID)
+		valueSet, err = s.fetchFromRemote(valueSetID)
 		if err != nil {
 			// If remote fails but we have expired cache/local, use that instead
 			if exists {
@@ -169,7 +169,10 @@ func (s *ValueSetService) parseValueSetURL(url string) (string, ValueSetSource) 
 	return url, LocalSource
 }
 
-func (s *ValueSetService) fetchFromRemote(ctx context.Context, url string) (*fhir.ValueSet, error) {
+func (s *ValueSetService) fetchFromRemote(url string) (*fhir.ValueSet, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -233,19 +236,19 @@ func (s *ValueSetService) loadValueSetFromDisk(filePath string) (*fhir.ValueSet,
 	return metadata.ValueSet, nil
 }
 
-func (s *ValueSetService) ValidateCode(ctx context.Context, valueSetURL string, coding *fhir.Coding) (*ValidationResult, error) {
+func (s *ValueSetService) ValidateCode(valueSetURL string, coding *fhir.Coding) (*ValidationResult, error) {
 	processedURLs := sync.Map{}
-	return s.validateCodeRecursive(ctx, valueSetURL, coding, &processedURLs)
+	return s.validateCodeRecursive(valueSetURL, coding, &processedURLs)
 }
 
-func (s *ValueSetService) validateCodeRecursive(ctx context.Context, valueSetURL string, coding *fhir.Coding, processedURLs *sync.Map) (*ValidationResult, error) {
+func (s *ValueSetService) validateCodeRecursive(valueSetURL string, coding *fhir.Coding, processedURLs *sync.Map) (*ValidationResult, error) {
 	if _, exists := processedURLs.Load(valueSetURL); exists {
 		return nil, fmt.Errorf("circular reference detected in ValueSet: %s", valueSetURL)
 	}
 	processedURLs.Store(valueSetURL, true)
 
 	// Get the ValueSet
-	valueSet, err := s.GetValueSet(ctx, valueSetURL)
+	valueSet, err := s.GetValueSet(valueSetURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch ValueSet %s: %w", valueSetURL, err)
 	}
@@ -276,7 +279,7 @@ func (s *ValueSetService) validateCodeRecursive(ctx context.Context, valueSetURL
 				wg.Add(1)
 				go func(url string) {
 					defer wg.Done()
-					res, err := s.validateCodeRecursive(ctx, url, coding, processedURLs)
+					res, err := s.validateCodeRecursive(url, coding, processedURLs)
 					results <- includeResult{result: res, err: err}
 				}(includeValueSetURL)
 			}

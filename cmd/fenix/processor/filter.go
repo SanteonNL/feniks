@@ -1,23 +1,67 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/SanteonNL/fenix/cmd/fenix/types"
 	"github.com/SanteonNL/fenix/models/fhir"
+	"github.com/rs/zerolog/log"
 )
 
-func (p *ProcessorService) checkFilter(ctx context.Context, field reflect.Value, path string, searchType string, filter *types.Filter) (bool, error) {
+func (p *ProcessorService) checkFilter(field reflect.Value, path string, filters []*types.Filter) (bool, error) {
+	// If no filters, return true
+	if len(filters) == 0 {
+		return true, nil
+	}
+
+	// All filters must pass for the field to pass
+	for _, filter := range filters {
+		// Get search type from search parameter service
+		searchType, exists := p.pathInfoSvc.GetSearchTypeByPathAndCode(path, filter.Code)
+		if !exists {
+			p.log.Debug().
+				Str("path", path).
+				Str("filterCode", filter.Code).
+				Msg("No search type found for filter")
+			return true, nil
+		}
+
+		p.log.Debug().
+			Str("path", path).
+			Str("searchType", searchType).
+			Str("filterCode", filter.Code).
+			Str("filterValue", filter.Value).
+			Str("fieldValue", getCodeFromField(field)).
+			Msg("Checking filter")
+
+		passed, err := p.checkSingleFilter(field, path, searchType, filter)
+		if err != nil {
+			return false, err
+		}
+		if !passed {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func (p *ProcessorService) checkSingleFilter(field reflect.Value, path string, searchType string, filter *types.Filter) (bool, error) {
 	switch searchType {
 	case "token":
-		return p.checkTokenFilter(ctx, field, path, filter.Value)
+		return p.checkTokenFilter(field, path, filter.Value)
 	case "string":
 		return p.checkStringFilter(field, filter.Value)
 	case "date":
 		return p.checkDateFilter(field, filter.Value)
+	// case "number":
+	// 	return p.checkNumberFilter(field, filter.Value)
+	// case "reference":
+	// 	return p.checkReferenceFilter(field, filter.Value)
+	// case "quantity":
+	// 	return p.checkQuantityFilter(field, filter.Value)
 	default:
 		p.log.Debug().
 			Str("type", searchType).
@@ -26,11 +70,11 @@ func (p *ProcessorService) checkFilter(ctx context.Context, field reflect.Value,
 	}
 }
 
-func (p *ProcessorService) checkTokenFilter(ctx context.Context, field reflect.Value, path string, filterValue string) (bool, error) {
+func (p *ProcessorService) checkTokenFilter(field reflect.Value, path string, filterValue string) (bool, error) {
 	// Get path info to check for ValueSet
 	pathInfo, err := p.pathInfoSvc.GetPathInfo(path)
 	if err == nil && pathInfo.ValueSet != "" {
-		return p.checkValueSetFilter(ctx, field, pathInfo.ValueSet)
+		return p.checkValueSetFilter(field, pathInfo.ValueSet)
 	}
 
 	// If no ValueSet, do direct comparison
@@ -38,14 +82,18 @@ func (p *ProcessorService) checkTokenFilter(ctx context.Context, field reflect.V
 	return code == filterValue, nil
 }
 
-func (p *ProcessorService) checkValueSetFilter(ctx context.Context, field reflect.Value, valueSetURL string) (bool, error) {
+func (p *ProcessorService) checkValueSetFilter(field reflect.Value, valueSetURL string) (bool, error) {
+	p.log.Debug().
+		Str("valueSetURL", valueSetURL).
+		Msg("Checking ValueSet filter")
+
 	switch field.Type().String() {
 	case "fhir.Coding", "*fhir.Coding":
 		coding := getCodingFromField(field)
 		if coding == nil {
 			return false, nil
 		}
-		valid, err := p.valueSetSvc.ValidateCode(ctx, valueSetURL, coding)
+		valid, err := p.valueSetSvc.ValidateCode(valueSetURL, coding)
 		if err != nil {
 			return false, err
 		}
@@ -57,7 +105,7 @@ func (p *ProcessorService) checkValueSetFilter(ctx context.Context, field reflec
 			return false, nil
 		}
 		for _, coding := range concept.Coding {
-			valid, err := p.valueSetSvc.ValidateCode(ctx, valueSetURL, &coding)
+			valid, err := p.valueSetSvc.ValidateCode(valueSetURL, &coding)
 			if err == nil && valid.Valid {
 				return true, nil
 			}
@@ -72,6 +120,13 @@ func (p *ProcessorService) checkValueSetFilter(ctx context.Context, field reflec
 // Helper functions
 
 func getCodeFromField(field reflect.Value) string {
+	log.Debug().Str("fieldType", field.Type().String()).Msg("Getting code from field")
+
+	// Helper function to check if type has Code method)
+	if typeHasCodeMethod(field.Type()) {
+		return field.MethodByName("Code").Call([]reflect.Value{})[0].String()
+	}
+
 	switch field.Type().String() {
 	case "fhir.Coding", "*fhir.Coding":
 		coding := getCodingFromField(field)

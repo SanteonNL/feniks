@@ -25,7 +25,42 @@ SELECT
     'usual' AS "identifier[0].use",
     'http://fhir.nl/fhir/NamingSystem/bsn' AS "identifier[1].system",
     '1s' AS "identifier[1].value",
-    'adsfasdf' AS "contact.gender"
+    'male' AS "contact.gender"
+FROM
+    patient
+-- WHERE identificatienummer ?id
+-- WHERE identificatienummer ?patient
+LIMIT 1;
+
+
+SELECT
+    '32323' AS "Patient.id",
+    '' AS parent_id,
+    '12' AS resource_id,
+    'Patient' AS "fhir_path",
+    'asdfasdf22' AS id,
+    'female' AS "gender",
+    'generated' AS "text.status",
+    '<div xmlns="http://www.w3.org/1999/xhtml">Patient information</div>' AS "text.div",
+    'true' AS "active",
+    'official' AS "name[0].use",
+    --'Tommy' AS "name[0].given",
+    'Hetterscheid' AS "name[0].family",
+    '1800-01-01' AS "birthdate",
+    -- '2e Daalsedijk 106' AS "address[0].line",
+    '3565AA' AS "address[0].postalCode",
+    'Utrecht' AS "address[0].city",
+    'NL' AS "address[0].country",
+    'home' AS "telecom[0].use",
+    'phone' AS "telecom[0].system",
+    '0650989181' AS "telecom[0].value",
+    'official' AS "identifier[0].use",
+    'http://fhir.nl/fhir/NamingSystem/bsn' AS "identifier[0].system",
+    '22221s' AS "identifier[0].value",
+    'usual' AS "identifier[0].use",
+    'http://fhir.nl/fhir/NamingSystem/bsn' AS "identifier[1].system",
+    '1s' AS "identifier[1].value",
+    'male' AS "contact.gender"
 FROM
     patient
 -- WHERE identificatienummer ?id

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -69,25 +70,25 @@ func (fr *FHIRRouter) handleSearch(w http.ResponseWriter, r *http.Request) {
 	queryParams := r.URL.Query()
 
 	// Get pagination parameters
-	pageSize, _ := strconv.Atoi(queryParams.Get("_count"))
-	offset, _ := strconv.Atoi(queryParams.Get("_offset"))
+	// pageSize, _ := strconv.Atoi(queryParams.Get("_count"))
+	// offset, _ := strconv.Atoi(queryParams.Get("_offset"))
 
 	// Create search params string for cache key
 	searchParams := getSearchParams(queryParams)
 
-	// Try to get page from cache first
-	if fr.bundleCache != nil {
-		if cachedResult, found := fr.bundleCache.GetPageFromCache(resourceType, searchParams, offset, pageSize); found {
-			fr.log.Debug().
-				Str("resource_type", resourceType).
-				Str("search_params", searchParams).
-				Msg("Serving response from cache")
+	// // Try to get page from cache first
+	// if fr.bundleCache != nil {
+	// 	if cachedResult, found := fr.bundleCache.GetPageFromCache(resourceType, searchParams, offset, pageSize); found {
+	// 		fr.log.Debug().
+	// 			Str("resource_type", resourceType).
+	// 			Str("search_params", searchParams).
+	// 			Msg("Serving response from cache")
 
-			// Create bundle from cached result
-			fr.createAndRespondWithBundle(w, r, *cachedResult, http.StatusOK)
-			return
-		}
-	}
+	// 		// Create bundle from cached result
+	// 		fr.createAndRespondWithBundle(w, r, *cachedResult, http.StatusOK)
+	// 		return
+	// 	}
+	// }
 
 	// If not in cache, proceed with full processing
 	searchResult := bundle.SearchResult{}
@@ -109,14 +110,14 @@ func (fr *FHIRRouter) handleSearch(w http.ResponseWriter, r *http.Request) {
 		searchResult.Issues = append(searchResult.Issues, issue)
 	}
 
-	// If there are only invalid parameters, return error response
-	if len(validFilters) == 0 && len(invalidFilters) > 0 {
-		fr.createAndRespondWithBundle(w, r, searchResult, http.StatusBadRequest)
-		return
-	}
+	// // If there are only invalid parameters, return error response
+	// if len(validFilters) == 0 && len(invalidFilters) > 0 {
+	// 	fr.createAndRespondWithBundle(w, r, searchResult, http.StatusBadRequest)
+	// 	return
+	// }
 
 	// Process the request
-	if err := fr.processRequest(r.Context(), resourceType, &searchResult); err != nil {
+	if err := fr.processRequest(r.Context(), resourceType, &searchResult, validFilters); err != nil {
 		searchResult.Issues = append(searchResult.Issues, bundle.NewProcessingError(err.Error()))
 		fr.createAndRespondWithBundle(w, r, searchResult, http.StatusInternalServerError)
 		return
@@ -132,7 +133,7 @@ func (fr *FHIRRouter) handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // Helper method to process the request
-func (fr *FHIRRouter) processRequest(ctx context.Context, resourceType string, searchResult *bundle.SearchResult) error {
+func (fr *FHIRRouter) processRequest(ctx context.Context, resourceType string, searchResult *bundle.SearchResult, filter []*types.Filter) error {
 	// Get query file path
 	queryFiles, err := fr.dataSourceService.FindSQLFilesInDir("queries/hix/flat", resourceType)
 	if err != nil {
@@ -151,7 +152,7 @@ func (fr *FHIRRouter) processRequest(ctx context.Context, resourceType string, s
 	}
 
 	// Process results
-	resources, err := fr.processorService.ProcessResources(ctx, fr.dataSourceService, resourceType, "", nil)
+	resources, err := fr.processorService.ProcessResources(ctx, fr.dataSourceService, resourceType, "", filter)
 	if err != nil {
 		return fmt.Errorf("error processing resources: %v", err)
 	}
@@ -267,9 +268,66 @@ func (fr *FHIRRouter) validateSearchParameters(resourceType string, params map[s
 
 	return validFilters, invalidFilters
 }
-
 func respondWithJSON(w http.ResponseWriter, status int, data interface{}) {
+	// Set headers
 	w.Header().Set("Content-Type", "application/fhir+json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+
+	// Use a bytes.Buffer to encode the JSON without escaping
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+
+	// Encode the data
+	if err := encoder.Encode(data); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		return
+	}
+	//log.Debug().Msgf("Bundle JSON: %s", strings.TrimSpace(buf.String()))
+	// Convert the JSON bytes to string and manually decode Unicode escape sequences
+	decodedJSON := decodeUnicodeEscapes(buf.String())
+
+	// Write the JSON to the response writer
+	w.Write([]byte(decodedJSON))
+}
+
+// decodeUnicodeEscapes decodes the Unicode escape sequences (e.g., \u0026) into their proper characters
+// like '&', and ensures that no other special character is wrongly escaped.
+func decodeUnicodeEscapes(jsonString string) string {
+	var result string
+	i := 0
+	for i < len(jsonString) {
+		// Check if we encounter a Unicode escape sequence (e.g., \u0026)
+		if jsonString[i] == '\\' && i+5 < len(jsonString) && jsonString[i+1] == 'u' {
+			// Capture the Unicode sequence and decode
+			hexValue := jsonString[i+2 : i+6]
+			codepoint, err := hexToRune(hexValue)
+			if err != nil {
+				// If we cannot decode the Unicode sequence, add the original characters
+				result += jsonString[i : i+6]
+				i += 6
+				continue
+			}
+
+			// Add the decoded character
+			result += string(codepoint)
+			i += 6
+		} else {
+			// If no escape sequence, just add the current character
+			result += string(jsonString[i])
+			i++
+		}
+	}
+
+	return result
+}
+
+// hexToRune converts a hex string (e.g., "0026") to a rune (character).
+func hexToRune(hexStr string) (rune, error) {
+	var codepoint int
+	_, err := fmt.Sscanf(hexStr, "%x", &codepoint)
+	if err != nil {
+		return 0, err
+	}
+	return rune(codepoint), nil
 }

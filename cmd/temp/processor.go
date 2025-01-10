@@ -262,6 +262,7 @@ func (rp *ProcessorService) populateStructAndNestedFields(structPath string, val
 	}
 
 	if !structResult.Passed {
+
 		return structResult, nil
 	}
 

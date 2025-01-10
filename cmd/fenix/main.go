@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,8 +15,6 @@ import (
 	"github.com/SanteonNL/fenix/cmd/fenix/fhir/valueset"
 	"github.com/SanteonNL/fenix/cmd/fenix/output"
 	"github.com/SanteonNL/fenix/cmd/fenix/processor"
-	"github.com/SanteonNL/fenix/cmd/fenix/types"
-	"github.com/SanteonNL/fenix/models/fhir"
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
 )
@@ -74,50 +70,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Info().Msg("Successfully completed conversion process")
-
 	dataSourceService := datasource.NewDataSourceService(db, log)
 	// Load queries
-	//err = dataSourceService.LoadQueryFile("queries/hix/flat/Observation_hix_metingen_metingen.sql")
-	err = dataSourceService.LoadQueryFile("queries/hix/flat/patient_1.sql")
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load query file")
-	}
-
-	// // Read resources
-	// results, err := dataSourceService.ReadResources("Patient", "12345")
-	// if err != nil {
-	// 	log.Printf("Error: %v", err)
-	// }
-
-	// // Print results
-	// for _, result := range results {
-	// 	for path, rowData := range result {
-	// 		fmt.Printf("Resource Path: %s, Data: %v\n", path, rowData)
-	// 	}
-	// }
-
-	// Example: Find ConceptMaps for a specific ValueSet
-	valueSetURL := "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354"
-
-	conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
-
-	conceptMaps, err := conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get ConceptMaps")
-	} else {
-		for _, conceptMap := range conceptMaps {
-			log.Info().
-				Str("name", conceptMap).
-				Msg("Found ConceptMap")
-		}
-
-	}
 
 	// Create the config
 	config := valueset.Config{
 		LocalPath:     "valuesets",      // Directory to store ValueSets
-		DefaultMaxAge: 24 * time.Hour,   // Cache for 24 hours by default
+		DefaultMaxAge: 240 * time.Hour,  // Cache for 24 hours by default
 		HTTPTimeout:   30 * time.Second, // Timeout for remote requests
 	}
 
@@ -126,71 +85,23 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create ValueSet service")
 	}
-	// Create a context
-	ctx := context.Background()
 
-	// Try getting a remote ValueSet
-	remoteValueSet, err := valuesetService.GetValueSet(ctx, "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get remote ValueSet")
-	} else {
-		log.Info().
-			Str("id", *remoteValueSet.Id).
-			Str("url", *remoteValueSet.Url).
-			Msg("Successfully loaded remote ValueSet")
-	}
-
-	// Example: Validate a code against a ValueSet
-	coding := &fhir.Coding{
-		System: ptr("http://snomed.info/sct"),
-		Code:   ptr("227620asd02"),
-	}
-
-	result, err := valuesetService.ValidateCode(ctx, "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354", coding)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to validate code")
-	} else {
-		if result.Valid {
-			log.Info().
-				Str("matchedIn", result.MatchedIn).
-				Msg("Code is valid")
-		} else {
-			log.Info().
-				Str("error", result.ErrorMessage).
-				Msg("Code is not valid")
-		}
-	}
-
-	// Initialize repository for StructureDefinitions
 	structureDefRepo := structuredefinition.NewStructureDefinitionRepository(log)
 
-	// Load existing StructureDefinitions
 	if err := structureDefRepo.LoadStructureDefinitions("profiles\\sim"); err != nil {
 		log.Error().Err(err).Msg("Failed to load existing StructureDefinitions")
 		os.Exit(1)
 	}
-
-	// Initialize StructureDefinition service with the repository
 	structureDefService := structuredefinition.NewStructureDefinitionService(structureDefRepo, log)
 
 	// Initialize repository for SearchParameters
 	searchParamRepo := searchparameter.NewSearchParameterRepository(log)
+
 	searchParamRepo.LoadSearchParametersFromFile("searchParameter\\search-parameter.json")
 
-	// Initialize SearchParameter service with the repository
 	searchParamService := searchparameter.NewSearchParameterService(searchParamRepo, log)
+
 	searchParamService.BuildSearchParameterIndex()
-
-	searchParamService.DebugResourceSearchParameters("Patient")
-
-	genderSearchType, err := searchParamService.GetSearchTypeByPathAndCode("Patient.gender", "gender")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get SearchParameter")
-	} else {
-		fmt.Printf("SearchParameter: %+v\n", genderSearchType)
-	}
-
-	outputMgr.WriteToJSON(genderSearchType, "searchType")
 
 	pathInfoService := fhirpathinfo.NewPathInfoService(structureDefService, searchParamService, conceptMapService, log)
 	structureDefService.BuildStructureDefinitionIndex()
@@ -207,31 +118,6 @@ func main() {
 	processorService, err := processor.NewProcessorService(processorConfig)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create ProcessorService")
-	}
-
-	searchType, err := pathInfoService.GetSearchTypeByPathAndCode("Patient.gender", "gender")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get SearchType")
-	} else {
-		log.Info().Msg("Successfully retrieved SearchType")
-		fmt.Printf("SearchType: %+v\n", searchType)
-	}
-	// Process resources
-	filter := types.Filter{
-		Code:  "identifier",
-		Value: "1s",
-	}
-
-	resources, err := processorService.ProcessResources(ctx, dataSourceService, "Patient", "12", []*types.Filter{&filter})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to process resources")
-
-	}
-
-	for _, resource := range resources {
-		if err := outputMgr.WriteToJSON(resource, "resource"); err != nil {
-			log.Error().Err(err).Msg("Failed to write resource to file")
-		}
 	}
 
 	// Create and setup router
