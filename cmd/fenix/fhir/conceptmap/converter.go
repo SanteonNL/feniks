@@ -141,13 +141,12 @@ func (c *ConceptMapConverter) ConvertCSVToFHIRAndSave(reader io.Reader, csvName 
 	conceptMap.Group = c.finalizeGroups(groupMap)
 
 	// Create the fhir/converted directory within the repository's local path
-	outputPath := filepath.Join(repository.localPath, "fhir", "converted")
-	if err := os.MkdirAll(outputPath, 0755); err != nil {
+	if err := os.MkdirAll(repository.localPath, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	// Save with original CSV name (minus extension) plus .json
-	outputFile := filepath.Join(outputPath, baseName+".json")
+	outputFile := filepath.Join(repository.localPath, baseName+".json")
 	if err := c.conceptMapService.SaveConceptMap(outputFile, conceptMap); err != nil {
 		return fmt.Errorf("failed to save ConceptMap: %w", err)
 	}
