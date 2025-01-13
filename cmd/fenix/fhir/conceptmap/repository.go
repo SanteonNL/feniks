@@ -200,6 +200,7 @@ func (repo *ConceptMapRepository) GetConceptMapFileNameByURL(url string) (string
 	return matchingFileName, nil
 }
 
+// TODO: remove function and call in main when done?
 // GetAllConceptMapsFromCache returns all ConceptMaps in the repository, this is just used to check what is in cache
 // and not really needed functionality
 func (r *ConceptMapRepository) GetAllConceptMapsFromCache() []string {
