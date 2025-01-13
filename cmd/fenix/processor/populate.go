@@ -708,7 +708,7 @@ func (rp *ProcessorService) setField(structPath string, structPtr interface{}, f
 
 		rp.log.Debug().Msgf("binding ValueSet: %s", bindingValueSet)
 
-		conceptMapURL, err := rp.conceptMapSvc.GetConceptMapsByValuesetURL(bindingValueSet)
+		conceptMapURL, err := rp.conceptMapSvc.GetConceptMapURLsByValuesetURL(bindingValueSet)
 		if err != nil {
 			rp.log.Error().Err(err).Msg("Failed to get ConceptMap")
 		}
