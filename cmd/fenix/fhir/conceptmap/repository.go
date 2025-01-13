@@ -145,12 +145,6 @@ func (repo *ConceptMapRepository) GetConceptMapURLsByValuesetURL(valueSetURL str
 	return matchingConceptMapURLs, nil
 }
 
-// TODO check if this function is really needed, it seems not to be used anywhere
-// Helper function to get the file name for a ConceptMap by ID or URL.
-func (repo *ConceptMapRepository) getFileName(key string) string {
-	return fmt.Sprintf("%s.json", key)
-}
-
 // GetConceptMapFileNameByURL returns the filename of a ConceptMap based on its URL
 // This function is only called in the  GetOrLoadConceptMap function but I am not sure it is really needed there
 // It might however be usefull if you do not want to have all conceptmaps loaded at once but only the ones you need
