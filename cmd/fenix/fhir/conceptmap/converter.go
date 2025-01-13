@@ -3,7 +3,6 @@ package conceptmap
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -160,47 +159,6 @@ func (c *ConceptMapConverter) ConvertCSVToFHIRAndSave(reader io.Reader, csvName 
 	}
 
 	return nil
-}
-
-// ConvertCSVToFHIR maintains backwards compatibility while using the repository structure
-func (c *ConceptMapConverter) ConvertCSVToFHIR(reader io.Reader, name string) (*fhir.ConceptMap, error) {
-
-	// Create a temporary repository
-	tempDir, err := os.MkdirTemp("", "conceptmap_*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %w", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	tempRepo := NewConceptMapRepository(tempDir, c.conceptMapService.log)
-
-	if err := c.ConvertCSVToFHIRAndSave(reader, name, tempRepo, false); err != nil {
-		return nil, err
-	}
-
-	// Read the saved file
-	convertedPath := filepath.Join(tempDir, "fhir", "converted")
-	files, err := os.ReadDir(convertedPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read converted directory: %w", err)
-	}
-
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no ConceptMap file was created")
-	}
-
-	data, err := os.ReadFile(filepath.Join(convertedPath, files[0].Name()))
-	if err != nil {
-		c.log.Fatal().Err(err).Msg("Failed to read ConceptMap file")
-		return nil, fmt.Errorf("failed to read ConceptMap file: %w", err)
-	}
-
-	var conceptMap fhir.ConceptMap
-	if err := json.Unmarshal(data, &conceptMap); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal ConceptMap: %w", err)
-	}
-
-	return &conceptMap, nil
 }
 
 // extractMapping creates a CSVMapping from a CSV row
