@@ -53,7 +53,7 @@ func main() {
 	repository := conceptmap.NewConceptMapRepository(repoDir, log)
 
 	// Load existing concept maps
-	if err := repository.LoadConceptMaps(); err != nil {
+	if err := repository.LoadConceptMapsIntoRepository(); err != nil {
 		log.Error().Err(err).Msg("Failed to load existing concept maps")
 		os.Exit(1)
 	}
@@ -100,9 +100,9 @@ func main() {
 	// Example: Find ConceptMaps for a specific ValueSet
 	valueSetURL := "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354"
 
-	conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
+	conceptMapService.GetConceptMapURLsByValuesetURL(valueSetURL)
 
-	conceptMaps, err := conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
+	conceptMaps, err := conceptMapService.GetConceptMapURLsByValuesetURL(valueSetURL)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get ConceptMaps")
 	} else {
