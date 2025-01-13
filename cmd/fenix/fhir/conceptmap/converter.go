@@ -3,6 +3,7 @@ package conceptmap
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -232,4 +233,39 @@ func (c *ConceptMapConverter) finalizeGroups(groupMap map[string]*fhir.ConceptMa
 		groups = append(groups, *group)
 	}
 	return groups
+}
+
+func (s *ConceptMapService) CreateConceptMap(id string, name string, sourceValueSet string, targetValueSet string) *fhir.ConceptMap {
+	url := fmt.Sprintf("http://localhost/fhir/ConceptMap/%s", id)
+
+	return &fhir.ConceptMap{
+		Id:        &id,
+		Url:       &url,
+		Name:      &name,
+		Status:    1,
+		Date:      stringPtr(time.Now().Format(time.RFC3339)),
+		SourceUri: &sourceValueSet,
+		TargetUri: &targetValueSet,
+		Group:     []fhir.ConceptMapGroup{},
+	}
+}
+
+// Add this method to your existing conceptmap/service.go file
+func (s *ConceptMapService) SaveConceptMap(outputPath string, cm *fhir.ConceptMap) error {
+	data, err := json.MarshalIndent(cm, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal ConceptMap: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		return fmt.Errorf("failed to create directories: %w", err)
+	}
+
+	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+		s.log.Error().Err(err).Str("path", outputPath).Msg("Failed to write ConceptMap to file")
+		return fmt.Errorf("failed to write ConceptMap file: %w", err)
+	}
+
+	s.log.Debug().Str("path", outputPath).Msg("Successfully saved ConceptMap")
+	return nil
 }
