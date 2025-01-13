@@ -26,10 +26,13 @@ func NewConceptMapService(repo *ConceptMapRepository, log zerolog.Logger) *Conce
 }
 
 // GetConceptMapForValueSet retrieves the ConceptMap for a given ValueSet URL.
-
+// TODO not sure if this function should be here
 func stringPtr(s string) *string {
 	return &s
 }
+
+// TODO think about a better name for this method, as not only codes are translated
+// It is also not clear if it is about code/coding/quantity, but also not because a coding contains a system code and display
 func (s *ConceptMapService) TranslateCode(conceptMapURLs []string, sourceCode string, typeIsCode bool) (*TranslationResult, error) {
 	if len(conceptMapURLs) == 0 || sourceCode == "" {
 		return nil, fmt.Errorf("at least one conceptMap URL and sourceCode are required")
@@ -42,7 +45,7 @@ func (s *ConceptMapService) TranslateCode(conceptMapURLs []string, sourceCode st
 
 	// Try each concept map
 	for _, url := range conceptMapURLs {
-		conceptMap, err := s.repo.GetConceptMap(url)
+		conceptMap, err := s.repo.GetOrLoadConceptMap(url)
 		if err != nil {
 			s.log.Debug().Err(err).Str("url", url).Msg("Failed to get concept map, trying next")
 			continue
@@ -67,6 +70,7 @@ func (s *ConceptMapService) TranslateCode(conceptMapURLs []string, sourceCode st
 	return nil, nil
 }
 
+// TODO: Change name to something more descriptive
 func (s *ConceptMapService) findDirectMapping(conceptMap *fhir.ConceptMap, sourceCode string) *TranslationResult {
 	for _, group := range conceptMap.Group {
 		for _, element := range group.Element {
@@ -85,6 +89,7 @@ func (s *ConceptMapService) findDirectMapping(conceptMap *fhir.ConceptMap, sourc
 	return nil
 }
 
+// TODO: change name, it is not a default mapping but a wildcard mapping
 func (s *ConceptMapService) findDefaultMapping(conceptMap *fhir.ConceptMap) *TranslationResult {
 	for _, group := range conceptMap.Group {
 		for _, element := range group.Element {
@@ -103,6 +108,8 @@ func (s *ConceptMapService) findDefaultMapping(conceptMap *fhir.ConceptMap) *Tra
 	return nil
 }
 
+// TODO: check if this is the best location, why not in the converter.go file?
+// What would be reassons to have it here?
 func (s *ConceptMapService) CreateConceptMap(id string, name string, sourceValueSet string, targetValueSet string) *fhir.ConceptMap {
 	url := fmt.Sprintf("http://localhost/fhir/ConceptMap/%s", id)
 
@@ -119,7 +126,8 @@ func (s *ConceptMapService) CreateConceptMap(id string, name string, sourceValue
 }
 
 // Add this method to your existing conceptmap/service.go file
-
+// TODO: check if this is the best location, why not in the converter.go file?
+// What would be reassons to have it here?
 func (s *ConceptMapService) SaveConceptMap(outputPath string, cm *fhir.ConceptMap) error {
 	data, err := json.MarshalIndent(cm, "", "  ")
 	if err != nil {
@@ -147,10 +155,11 @@ func getDisplayValue(display *string) string {
 	return ""
 }
 
-func (svc *ConceptMapService) GetConceptMapsByValuesetURL(valueSetURL string) ([]string, error) {
-	return svc.repo.GetConceptMapsByValuesetURL(valueSetURL)
+func (svc *ConceptMapService) GetConceptMapURLsByValuesetURL(valueSetURL string) ([]string, error) {
+	return svc.repo.GetConceptMapURLsByValuesetURL(valueSetURL)
 }
 
+// TODO: check if needed, seems not used yet
 // Helper function to extract version from ConceptMap
 func getVersionFromConceptMap(cm *fhir.ConceptMap) string {
 	if cm.Version != nil {
@@ -159,6 +168,7 @@ func getVersionFromConceptMap(cm *fhir.ConceptMap) string {
 	return ""
 }
 
+// TODO: check if needed, seems not used yet
 // GetRepository returns the ConceptMapRepository
 func (s *ConceptMapService) GetRepository() *ConceptMapRepository {
 	return s.repo
