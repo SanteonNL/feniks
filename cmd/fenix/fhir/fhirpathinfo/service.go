@@ -77,7 +77,7 @@ func (svc *PathInfoService) BuildIndex() error {
 			info.ValueSet = valueSetURL
 
 			// Then find all ConceptMaps that reference this ValueSet
-			conceptMaps, err := svc.conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
+			conceptMaps, err := svc.conceptMapService.GetConceptMapURLsByValuesetURL(valueSetURL)
 			if err != nil {
 				svc.log.Warn().
 					Err(err).
