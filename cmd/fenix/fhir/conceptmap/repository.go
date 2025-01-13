@@ -12,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// TODO add source or target in function names to make it more clear what the function does
 // ConceptMapRepository handles loading and storing ConceptMap resources.
 type ConceptMapRepository struct {
 	log         zerolog.Logger
