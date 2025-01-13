@@ -151,11 +151,8 @@ func (c *ConceptMapConverter) ConvertCSVToFHIRAndSave(reader io.Reader, csvName 
 	}
 
 	// Add to repository cache
-	if conceptMap.Id != nil {
-		repository.cache.Store(*conceptMap.Id, conceptMap)
-	}
-	if conceptMap.TargetUri != nil {
-		repository.cache.Store(*conceptMap.TargetUri, conceptMap)
+	if conceptMap.Url != nil {
+		repository.cache.Store(*conceptMap.Url, conceptMap)
 	}
 
 	return nil

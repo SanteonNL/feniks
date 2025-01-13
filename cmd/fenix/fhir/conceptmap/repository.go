@@ -66,19 +66,6 @@ func (repo *ConceptMapRepository) LoadConceptMapsIntoRepository() error {
 					Str("file", file.Name()).
 					Msg("ConceptMap has no Url")
 			}
-
-			if conceptMap.TargetUri != nil {
-				if *conceptMap.TargetUri != "" {
-					repo.cache.Store(*conceptMap.TargetUri, conceptMap)
-					repo.log.Debug().
-						Str("targetUri", *conceptMap.TargetUri).
-						Msg("Loaded ConceptMap into cache by TargetUri")
-				}
-			} else {
-				repo.log.Warn().
-					Str("file", file.Name()).
-					Msg("ConceptMap has no TargetUri")
-			}
 		}
 	}
 
