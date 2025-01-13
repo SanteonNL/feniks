@@ -56,6 +56,8 @@ func (repo *ConceptMapRepository) LoadConceptMapsIntoRepository() error {
 				continue
 			}
 
+			// TODO: add check for empty string or make sure that the url is always present
+			// Also check this at other places where the url is used
 			if conceptMap.Url != nil {
 				repo.cache.Store(*conceptMap.Url, conceptMap)
 				repo.log.Debug().
