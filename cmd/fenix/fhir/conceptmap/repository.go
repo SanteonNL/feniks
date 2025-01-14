@@ -75,7 +75,7 @@ func (repo *ConceptMapRepository) LoadConceptMapsIntoRepository() error {
 	return nil
 }
 
-// loadConceptMapFile loads a ConceptMap from a file.
+// readConceptMapFile reads a ConceptMap from a file.
 func (repo *ConceptMapRepository) readConceptMapFromFile(filePath string) (*fhir.ConceptMap, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {

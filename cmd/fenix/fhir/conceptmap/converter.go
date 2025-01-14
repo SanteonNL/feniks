@@ -236,6 +236,7 @@ func (c *ConceptMapConverter) finalizeGroups(groupMap map[string]*fhir.ConceptMa
 	return groups
 }
 
+// TODO: make this work on the repository?
 func (s *ConceptMapService) CreateConceptMap(id string, name string, sourceValueSet string, targetValueSet string) *fhir.ConceptMap {
 	url := fmt.Sprintf("http://localhost/fhir/ConceptMap/%s", id)
 
@@ -251,6 +252,7 @@ func (s *ConceptMapService) CreateConceptMap(id string, name string, sourceValue
 	}
 }
 
+// TODO make this work on the repository?
 // Add this method to your existing conceptmap/service.go file
 func (s *ConceptMapService) SaveConceptMap(outputPath string, cm *fhir.ConceptMap) error {
 	data, err := json.MarshalIndent(cm, "", "  ")
