@@ -115,18 +115,3 @@ func getDisplayValue(display *string) string {
 func (svc *ConceptMapService) GetConceptMapURLsByValuesetURL(valueSetURL string) ([]string, error) {
 	return svc.repo.GetConceptMapURLsByValuesetURL(valueSetURL)
 }
-
-// TODO: check if needed, seems not used yet
-// Helper function to extract version from ConceptMap
-func getVersionFromConceptMap(cm *fhir.ConceptMap) string {
-	if cm.Version != nil {
-		return *cm.Version
-	}
-	return ""
-}
-
-// TODO: check if needed, seems not used yet
-// GetRepository returns the ConceptMapRepository
-func (s *ConceptMapService) GetRepository() *ConceptMapRepository {
-	return s.repo
-}
