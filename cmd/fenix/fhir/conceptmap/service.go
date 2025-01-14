@@ -35,7 +35,7 @@ func (s *ConceptMapService) TranslateCode(conceptMapURLs []string, sourceCode st
 
 	// Try each concept map
 	for _, url := range conceptMapURLs {
-		conceptMap, err := s.repo.GetOrLoadConceptMap(url)
+		conceptMap, err := s.repo.GetConceptMap(url)
 		if err != nil {
 			s.log.Debug().Err(err).Str("url", url).Msg("Failed to get concept map, trying next")
 			continue

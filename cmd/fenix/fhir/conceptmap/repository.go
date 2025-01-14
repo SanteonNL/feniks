@@ -94,34 +94,12 @@ func (repo *ConceptMapRepository) readConceptMapFromFile(filePath string) (*fhir
 	return &conceptMap, nil
 }
 
-// GetOrLoadConceptMap retrieves a ConceptMap by URL, loading it from disk if not already in cache.
-func (repo *ConceptMapRepository) GetOrLoadConceptMap(url string) (*fhir.ConceptMap, error) {
+// GetConceptMap retrieves a ConceptMap from cache by URL
+// TODO: maybe add back also loading from disk if not in cache if needed
+func (repo *ConceptMapRepository) GetConceptMap(url string) (*fhir.ConceptMap, error) {
 
-	// Try cache first
 	if cached, ok := repo.cache.Load(url); ok {
 		return cached.(*fhir.ConceptMap), nil
-	}
-
-	// Load from disk if not in cache
-	// TOOD: Ask why this is needed; because the cache should be loaded with all ConceptMaps if first in the main all conceptmaps
-	// are loaded from disk and next all converted conceptmaps are also loaded from disk
-	// It might however be usefull if you do not want to load all conceptmaps at once but only the ones you need (and load them only once)
-	// Also the function GetConceptMapFileNameByURL uses readConceptMapFromFile  so it seems a bit circular...
-	// Beacuse it needs to read the conceptmap to determine the filename. Soe maybe jsut let GetConceptMapFileNameByURL
-	// return the conceptmap and not the filename
-	fileName, err := repo.GetConceptMapFileNameByURL(url)
-	if err != nil {
-		return nil, err
-	}
-
-	filePath := filepath.Join(repo.localPath, fileName)
-
-	conceptMap, err := repo.readConceptMapFromFile(filePath)
-	if err != nil {
-		repo.cache.Store(url, conceptMap)
-		return conceptMap, nil
-	} else {
-		return nil, err
 	}
 }
 
@@ -145,61 +123,6 @@ func (repo *ConceptMapRepository) GetConceptMapURLsByValuesetURL(valueSetURL str
 	}
 
 	return matchingConceptMapURLs, nil
-}
-
-// GetConceptMapFileNameByURL returns the filename of a ConceptMap based on its URL
-// This function is only called in the  GetOrLoadConceptMap function but I am not sure it is really needed there
-// It might however be usefull if you do not want to have all conceptmaps loaded at once but only the ones you need
-// TODO check if this function is really neededs
-func (repo *ConceptMapRepository) GetConceptMapFileNameByURL(url string) (string, error) {
-	var matchingFileName string
-	err := filepath.Walk(repo.localPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip directories and non-JSON files
-		if info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
-			return nil
-		}
-
-		conceptMap, err := repo.readConceptMapFromFile(path)
-		if err != nil {
-			repo.log.Warn().
-				Err(err).
-				Str("file", info.Name()).
-				Str("path", path).
-				Msg("Failed to load ConceptMap file while searching")
-			return nil // Continue walking even if one file fails
-		}
-
-		// TODO check if the targetUri check is a remnant of artdecor and should be removed?
-		// As targeturi should be the url of the value set and not the url of the conceptmap...
-		// TODO: check implications of stopping the walk when a match is found
-		// Supposedly url names are unique so it should be fine, but do we make sure url names are unique?
-		// Check both URL and TargetUri
-		if (conceptMap.Url != nil && *conceptMap.Url == url) ||
-			(conceptMap.TargetUri != nil && *conceptMap.TargetUri == url) {
-			repo.log.Debug().
-				Str("url", url).
-				Str("filename", info.Name()).
-				Msg("Found matching ConceptMap file")
-			matchingFileName = info.Name()
-			return filepath.SkipAll // Stop walking once we find a match
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return "", fmt.Errorf("error walking directory: %w", err)
-	}
-
-	if matchingFileName == "" {
-		return "", fmt.Errorf("no ConceptMap file found for URL: %s", url)
-	}
-
-	return matchingFileName, nil
 }
 
 // TODO: remove function and call in main when done?
