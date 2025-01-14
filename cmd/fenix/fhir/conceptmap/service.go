@@ -21,12 +21,6 @@ func NewConceptMapService(repo *ConceptMapRepository, log zerolog.Logger) *Conce
 	}
 }
 
-// GetConceptMapForValueSet retrieves the ConceptMap for a given ValueSet URL.
-// TODO not sure if this function should be here
-func stringPtr(s string) *string {
-	return &s
-}
-
 // TODO think about a better name for this method, as not only codes are translated
 // It is also not clear if it is about code/coding/quantity, but also not because a coding contains a system code and display
 func (s *ConceptMapService) TranslateCode(conceptMapURLs []string, sourceCode string, typeIsCode bool) (*TranslationResult, error) {

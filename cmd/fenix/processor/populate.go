@@ -464,9 +464,9 @@ func (p *ProcessorService) setCodingOrQuantityFromRow(valuesetBindingPath string
 			return nil
 		}
 		coding := fhir.Coding{
-			Code:    stringPtr(code),
-			Display: stringPtr(fieldValues["display"]),
-			System:  stringPtr(system),
+			Code:    stringPtrOrNil(code),
+			Display: stringPtrOrNil(fieldValues["display"]),
+			System:  stringPtrOrNil(system),
 		}
 
 		// // Handle concept mapping
@@ -482,9 +482,9 @@ func (p *ProcessorService) setCodingOrQuantityFromRow(valuesetBindingPath string
 	} else {
 		quantity := fhir.Quantity{
 			Value:  jsonNumberPtr(fieldValues["value"]),
-			Unit:   stringPtr(fieldValues["unit"]),
-			System: stringPtr(system),
-			Code:   stringPtr(code),
+			Unit:   stringPtrOrNil(fieldValues["unit"]),
+			System: stringPtrOrNil(system),
+			Code:   stringPtrOrNil(code),
 		}
 
 		// if code != "" {
@@ -629,7 +629,8 @@ func jsonNumberPtr(s string) *json.Number {
 }
 
 // Helper function to set a string pointer if the value is not empty
-func stringPtr(s string) *string {
+// TODO: check of this function can also be used for  StringPtr function that is now in utils.go
+func stringPtrOrNil(s string) *string {
 	if s == "" {
 		return nil
 	}

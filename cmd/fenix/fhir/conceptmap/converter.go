@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/SanteonNL/fenix/models/fhir"
+	"github.com/SanteonNL/fenix/util"
 	"github.com/rs/zerolog"
 )
 
@@ -243,7 +244,7 @@ func (s *ConceptMapService) CreateConceptMap(id string, name string, sourceValue
 		Url:       &url,
 		Name:      &name,
 		Status:    1,
-		Date:      stringPtr(time.Now().Format(time.RFC3339)),
+		Date:      util.StringPtr(time.Now().Format(time.RFC3339)),
 		SourceUri: &sourceValueSet,
 		TargetUri: &targetValueSet,
 		Group:     []fhir.ConceptMapGroup{},
