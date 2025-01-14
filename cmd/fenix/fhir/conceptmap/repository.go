@@ -12,6 +12,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// TODO: think about when the cache should be cleared and how to do this
+// Every run / every request, ...? It seems now to collect conceptmaps from different dates and not to clear the cache
 // ConceptMapRepository handles loading and storing ConceptMap resources.
 type ConceptMapRepository struct {
 	log         zerolog.Logger
