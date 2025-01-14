@@ -13,21 +13,21 @@ import (
 )
 
 // TODO: think about when the cache should be cleared and how to do this
-// Every run / every request, ...? It seems now to collect conceptmaps from different dates and not to clear the cache
+// TODO: think about cache versus loading conceptmaps and how to do it comparable to the valueset repository
 // ConceptMapRepository handles loading and storing ConceptMap resources.
 type ConceptMapRepository struct {
-	log         zerolog.Logger
-	localPath   string
-	cache       sync.Map
-	conceptMaps map[string]fhir.ConceptMap
+	log       zerolog.Logger
+	localPath string
+	cache     sync.Map
+	//conceptMaps map[string]fhir.ConceptMap
 }
 
 // NewConceptMapRepository creates a new ConceptMapRepository.
 func NewConceptMapRepository(localPath string, log zerolog.Logger) *ConceptMapRepository {
 	return &ConceptMapRepository{
-		log:         log,
-		localPath:   localPath,
-		conceptMaps: make(map[string]fhir.ConceptMap),
+		log:       log,
+		localPath: localPath,
+		//conceptMaps: make(map[string]fhir.ConceptMap),
 	}
 }
 
