@@ -372,6 +372,7 @@ func (s *ValueSetService) getValueSetFilename(valueSet *fhir.ValueSet) string {
 	return fmt.Sprintf("%s_%s.json", baseName, urlHash)
 }
 
+// TODO: Add check if valueset needs to be updated? Or is it already somewhere else?
 // WriteNewValueSet writes a newly downloaded ValueSet to disk and updates mappings
 func (s *ValueSetService) WriteNewValueSet(ctx context.Context, valueSet *fhir.ValueSet) error {
 	if valueSet.Url == nil {

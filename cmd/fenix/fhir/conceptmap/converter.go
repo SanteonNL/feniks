@@ -12,23 +12,52 @@ import (
 	"time"
 
 	"github.com/SanteonNL/fenix/models/fhir"
+	"github.com/SanteonNL/fenix/util"
 	"github.com/rs/zerolog"
 )
 
 // ConceptMapConverter handles conversion of mapping files to FHIR ConceptMaps
 type ConceptMapConverter struct {
-	log               zerolog.Logger
-	conceptMapService *ConceptMapService
+	log           zerolog.Logger
+	baseDir       string
+	InputDir      string
+	RepositoryDir string
 }
 
 // NewConceptMapConverter creates a new converter instance
-func NewConceptMapConverter(log zerolog.Logger, conceptMapService *ConceptMapService) *ConceptMapConverter {
-	return &ConceptMapConverter{
-		log:               log,
-		conceptMapService: conceptMapService,
+func NewConceptMapConverter(log zerolog.Logger) (*ConceptMapConverter, error) {
+	converter := &ConceptMapConverter{
+		log:     log,
+		baseDir: ".",
 	}
+
+	// Setup directories
+	if err := converter.SetupDirectories(); err != nil {
+		log.Error().Err(err).Msg("Failed to set up directories for ConceptMap conversion")
+		return nil, fmt.Errorf("failed to create ConceptMapConverter: %w", err)
+	}
+
+	return converter, nil
 }
 
+func (c *ConceptMapConverter) SetupDirectories() error {
+	// Define paths based on the base directory
+	c.InputDir = filepath.Join(c.baseDir, "config/conceptmaps/flat")
+	c.RepositoryDir = filepath.Join(c.baseDir, "config/conceptmaps/fhir/converted")
+
+	// Ensure directories exist
+	for _, dir := range []string{c.InputDir, c.RepositoryDir} {
+		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+			c.log.Error().Err(err).Str("path", dir).Msg("Failed to create directory")
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+		c.log.Info().Str("directory", dir).Msg("Directory verified and ready")
+	}
+
+	return nil
+}
+
+// TODO: add check if csv is already converted
 // ConvertFolderToFHIR converts all CSV files in a folder to FHIR ConceptMaps
 func (c *ConceptMapConverter) ConvertFolderToFHIR(inputFolder string, repository *ConceptMapRepository, usePrefix bool) error {
 	files, err := os.ReadDir(inputFolder)
@@ -56,7 +85,7 @@ func (c *ConceptMapConverter) ConvertFolderToFHIR(inputFolder string, repository
 			continue
 		}
 
-		c.conceptMapService.log.Info().
+		c.log.Info().
 			Str("file", file.Name()).
 			Msg("Successfully converted CSV to ConceptMap")
 	}
@@ -89,7 +118,7 @@ func (c *ConceptMapConverter) ConvertCSVToFHIRAndSave(reader io.Reader, csvName 
 	baseName := strings.TrimSuffix(csvName, filepath.Ext(csvName))
 
 	// Create initial ConceptMap
-	conceptMap := c.conceptMapService.CreateConceptMap(
+	conceptMap := c.CreateConceptMap(
 		fmt.Sprintf("%s_%s", baseName, time.Now().Format("20060102")),
 		baseName,
 		"", // Will be populated from first row
@@ -141,67 +170,17 @@ func (c *ConceptMapConverter) ConvertCSVToFHIRAndSave(reader io.Reader, csvName 
 	conceptMap.Group = c.finalizeGroups(groupMap)
 
 	// Create the fhir/converted directory within the repository's local path
-	outputPath := filepath.Join(repository.localPath, "fhir", "converted")
-	if err := os.MkdirAll(outputPath, 0755); err != nil {
+	if err := os.MkdirAll(repository.localPath, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	// Save with original CSV name (minus extension) plus .json
-	outputFile := filepath.Join(outputPath, baseName+".json")
-	if err := c.conceptMapService.SaveConceptMap(outputFile, conceptMap); err != nil {
+	outputFile := filepath.Join(repository.localPath, baseName+".json")
+	if err := c.SaveConceptMap(outputFile, conceptMap); err != nil {
 		return fmt.Errorf("failed to save ConceptMap: %w", err)
 	}
 
-	// Add to repository cache
-	if conceptMap.Id != nil {
-		repository.cache.Store(*conceptMap.Id, conceptMap)
-	}
-	if conceptMap.TargetUri != nil {
-		repository.cache.Store(*conceptMap.TargetUri, conceptMap)
-	}
-
 	return nil
-}
-
-// ConvertCSVToFHIR maintains backwards compatibility while using the repository structure
-func (c *ConceptMapConverter) ConvertCSVToFHIR(reader io.Reader, name string) (*fhir.ConceptMap, error) {
-
-	// Create a temporary repository
-	tempDir, err := os.MkdirTemp("", "conceptmap_*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %w", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	tempRepo := NewConceptMapRepository(tempDir, c.conceptMapService.log)
-
-	if err := c.ConvertCSVToFHIRAndSave(reader, name, tempRepo, false); err != nil {
-		return nil, err
-	}
-
-	// Read the saved file
-	convertedPath := filepath.Join(tempDir, "fhir", "converted")
-	files, err := os.ReadDir(convertedPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read converted directory: %w", err)
-	}
-
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no ConceptMap file was created")
-	}
-
-	data, err := os.ReadFile(filepath.Join(convertedPath, files[0].Name()))
-	if err != nil {
-		c.log.Fatal().Err(err).Msg("Failed to read ConceptMap file")
-		return nil, fmt.Errorf("failed to read ConceptMap file: %w", err)
-	}
-
-	var conceptMap fhir.ConceptMap
-	if err := json.Unmarshal(data, &conceptMap); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal ConceptMap: %w", err)
-	}
-
-	return &conceptMap, nil
 }
 
 // extractMapping creates a CSVMapping from a CSV row
@@ -278,4 +257,39 @@ func (c *ConceptMapConverter) finalizeGroups(groupMap map[string]*fhir.ConceptMa
 		groups = append(groups, *group)
 	}
 	return groups
+}
+
+func (c *ConceptMapConverter) CreateConceptMap(id string, name string, sourceValueSet string, targetValueSet string) *fhir.ConceptMap {
+	url := fmt.Sprintf("http://localhost/fhir/ConceptMap/%s", id)
+
+	return &fhir.ConceptMap{
+		Id:        &id,
+		Url:       &url,
+		Name:      &name,
+		Status:    1,
+		Date:      util.StringPtr(time.Now().Format(time.RFC3339)),
+		SourceUri: &sourceValueSet,
+		TargetUri: &targetValueSet,
+		Group:     []fhir.ConceptMapGroup{},
+	}
+}
+
+// Add this method to your existing conceptmap/service.go file
+func (c *ConceptMapConverter) SaveConceptMap(outputPath string, cm *fhir.ConceptMap) error {
+	data, err := json.MarshalIndent(cm, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal ConceptMap: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		return fmt.Errorf("failed to create directories: %w", err)
+	}
+
+	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+		c.log.Error().Err(err).Str("path", outputPath).Msg("Failed to write ConceptMap to file")
+		return fmt.Errorf("failed to write ConceptMap file: %w", err)
+	}
+
+	c.log.Debug().Str("path", outputPath).Msg("Successfully saved ConceptMap")
+	return nil
 }

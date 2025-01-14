@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/SanteonNL/fenix/cmd/fenix/api"
@@ -44,37 +43,39 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 
-	// Define paths
-	baseDir := "."                                                // Current directory
-	inputDir := filepath.Join(baseDir, "config/conceptmaps/flat") // ./csv directory for input files
-	repoDir := filepath.Join(baseDir, "config/conceptmaps")       // ./fhir directory for repository
-
-	// Initialize repository
-	repository := conceptmap.NewConceptMapRepository(repoDir, log)
-
-	// Load existing concept maps
-	if err := repository.LoadConceptMaps(); err != nil {
-		log.Error().Err(err).Msg("Failed to load existing concept maps")
-		os.Exit(1)
+	// Convert CSV conceptmaps to FHIR ConceptMaps
+	conceptMapConverter, err := conceptmap.NewConceptMapConverter(log)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize ConceptMapConverter")
 	}
+	conceptMapRepo := conceptmap.NewConceptMapRepository(conceptMapConverter.RepositoryDir, log)
 
-	// Initialize services and converter
-	conceptMapService := conceptmap.NewConceptMapService(repository, log)
-	conceptMapConverter := conceptmap.NewConceptMapConverter(log, conceptMapService)
-
-	// Process the input directory
 	log.Info().
-		Str("input_dir", inputDir).
-		Str("repo_dir", repoDir).
-		Msg("Starting conversion of CSV files")
+		Str("input_directory", conceptMapConverter.InputDir).
+		Str("repository_directory", conceptMapConverter.RepositoryDir).
+		Msg("Starting the conversion of ConceptMap CSV files to JSON format")
 
-	// Set usePrefix to true to add 'conceptmap_converted_' prefix to ValueSet URIs
-	if err := conceptMapConverter.ConvertFolderToFHIR(inputDir, repository, true); err != nil {
+	usePrefix := true // Set usePrefix to true to add 'conceptmap_converted_' prefix to ValueSet URIs
+	if err := conceptMapConverter.ConvertFolderToFHIR(conceptMapConverter.InputDir, conceptMapRepo, usePrefix); err != nil {
 		log.Error().Err(err).Msg("Conversion process failed")
 		os.Exit(1)
 	}
 
 	log.Info().Msg("Successfully completed conversion process")
+
+	// Load all conceptmaps into the repository
+	if err := conceptMapRepo.LoadConceptMapsIntoRepository(); err != nil {
+		log.Error().Err(err).Msg("Failed to load existing concept maps")
+		os.Exit(1)
+	}
+
+	// Initialize services
+
+	conceptMapService := conceptmap.NewConceptMapService(conceptMapRepo, log)
+
+	for _, conceptMap := range conceptMapRepo.GetAllConceptMapsFromCache() {
+		log.Info().Msgf("ConceptMap: %s", conceptMap)
+	}
 
 	dataSourceService := datasource.NewDataSourceService(db, log)
 	// Load queries
@@ -100,9 +101,9 @@ func main() {
 	// Example: Find ConceptMaps for a specific ValueSet
 	valueSetURL := "https://decor.nictiz.nl/fhir/4.0/sansa-/ValueSet/2.16.840.1.113883.2.4.3.11.60.909.11.2--20241203090354"
 
-	conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
+	conceptMapService.GetConceptMapURLsByValuesetURL(valueSetURL)
 
-	conceptMaps, err := conceptMapService.GetConceptMapsByValuesetURL(valueSetURL)
+	conceptMaps, err := conceptMapService.GetConceptMapURLsByValuesetURL(valueSetURL)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get ConceptMaps")
 	} else {

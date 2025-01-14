@@ -19,6 +19,7 @@ func GetAbsolutePath(relativePath string) string {
 	return absolutePath
 }
 
+// TODO: check of this function can be removed and use StringPtrOrNil instead that is now definied in populate.go
 func StringPtr(s string) *string {
 	return &s
 }
