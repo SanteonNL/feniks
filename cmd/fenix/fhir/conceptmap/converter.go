@@ -17,7 +17,6 @@ import (
 )
 
 // ConceptMapConverter handles conversion of mapping files to FHIR ConceptMaps
-// ConceptMapConverter handles conversion of mapping files to FHIR ConceptMaps
 type ConceptMapConverter struct {
 	log           zerolog.Logger
 	baseDir       string
