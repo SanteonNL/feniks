@@ -43,21 +43,20 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 
+	// Convert CSV conceptmaps to FHIR ConceptMaps
 	conceptMapConverter, err := conceptmap.NewConceptMapConverter(log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize ConceptMapConverter")
 	}
-	// Initialize conceptmap repository and converter
 	conceptMapRepo := conceptmap.NewConceptMapRepository(conceptMapConverter.RepositoryDir, log)
 
-	// Process ConceptMap CSV files and convert them to FHIR ConceptMaps
 	log.Info().
 		Str("input_directory", conceptMapConverter.InputDir).
 		Str("repository_directory", conceptMapConverter.RepositoryDir).
 		Msg("Starting the conversion of ConceptMap CSV files to JSON format")
 
-	// Set usePrefix to true to add 'conceptmap_converted_' prefix to ValueSet URIs
-	if err := conceptMapConverter.ConvertFolderToFHIR(conceptMapConverter.InputDir, conceptMapRepo, true); err != nil {
+	usePrefix := true // Set usePrefix to true to add 'conceptmap_converted_' prefix to ValueSet URIs
+	if err := conceptMapConverter.ConvertFolderToFHIR(conceptMapConverter.InputDir, conceptMapRepo, usePrefix); err != nil {
 		log.Error().Err(err).Msg("Conversion process failed")
 		os.Exit(1)
 	}
