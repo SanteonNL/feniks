@@ -17,17 +17,45 @@ import (
 )
 
 // ConceptMapConverter handles conversion of mapping files to FHIR ConceptMaps
+// ConceptMapConverter handles conversion of mapping files to FHIR ConceptMaps
 type ConceptMapConverter struct {
-	log               zerolog.Logger
-	conceptMapService *ConceptMapService
+	log           zerolog.Logger
+	baseDir       string
+	InputDir      string
+	RepositoryDir string
 }
 
 // NewConceptMapConverter creates a new converter instance
-func NewConceptMapConverter(log zerolog.Logger, conceptMapService *ConceptMapService) *ConceptMapConverter {
-	return &ConceptMapConverter{
-		log:               log,
-		conceptMapService: conceptMapService,
+func NewConceptMapConverter(log zerolog.Logger) (*ConceptMapConverter, error) {
+	converter := &ConceptMapConverter{
+		log:     log,
+		baseDir: ".",
 	}
+
+	// Setup directories
+	if err := converter.SetupDirectories(); err != nil {
+		log.Error().Err(err).Msg("Failed to set up directories for ConceptMap conversion")
+		return nil, fmt.Errorf("failed to create ConceptMapConverter: %w", err)
+	}
+
+	return converter, nil
+}
+
+func (c *ConceptMapConverter) SetupDirectories() error {
+	// Define paths based on the base directory
+	c.InputDir = filepath.Join(c.baseDir, "config/conceptmaps/flat")
+	c.RepositoryDir = filepath.Join(c.baseDir, "config/conceptmaps/fhir/converted")
+
+	// Ensure directories exist
+	for _, dir := range []string{c.InputDir, c.RepositoryDir} {
+		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+			c.log.Error().Err(err).Str("path", dir).Msg("Failed to create directory")
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+		c.log.Info().Str("directory", dir).Msg("Directory verified and ready")
+	}
+
+	return nil
 }
 
 // TODO: add check if csv is already converted
@@ -58,7 +86,7 @@ func (c *ConceptMapConverter) ConvertFolderToFHIR(inputFolder string, repository
 			continue
 		}
 
-		c.conceptMapService.log.Info().
+		c.log.Info().
 			Str("file", file.Name()).
 			Msg("Successfully converted CSV to ConceptMap")
 	}
@@ -151,11 +179,6 @@ func (c *ConceptMapConverter) ConvertCSVToFHIRAndSave(reader io.Reader, csvName 
 	outputFile := filepath.Join(repository.localPath, baseName+".json")
 	if err := c.SaveConceptMap(outputFile, conceptMap); err != nil {
 		return fmt.Errorf("failed to save ConceptMap: %w", err)
-	}
-
-	// Add to repository cache
-	if conceptMap.Url != nil {
-		repository.cache.Store(*conceptMap.Url, conceptMap)
 	}
 
 	return nil
