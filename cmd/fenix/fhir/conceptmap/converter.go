@@ -30,6 +30,7 @@ func NewConceptMapConverter(log zerolog.Logger, conceptMapService *ConceptMapSer
 	}
 }
 
+// TODO: add check if csv is already converted
 // ConvertFolderToFHIR converts all CSV files in a folder to FHIR ConceptMaps
 func (c *ConceptMapConverter) ConvertFolderToFHIR(inputFolder string, repository *ConceptMapRepository, usePrefix bool) error {
 	files, err := os.ReadDir(inputFolder)
