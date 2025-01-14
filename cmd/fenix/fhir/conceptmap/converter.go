@@ -90,7 +90,7 @@ func (c *ConceptMapConverter) ConvertCSVToFHIRAndSave(reader io.Reader, csvName 
 	baseName := strings.TrimSuffix(csvName, filepath.Ext(csvName))
 
 	// Create initial ConceptMap
-	conceptMap := c.conceptMapService.CreateConceptMap(
+	conceptMap := c.CreateConceptMap(
 		fmt.Sprintf("%s_%s", baseName, time.Now().Format("20060102")),
 		baseName,
 		"", // Will be populated from first row
@@ -148,7 +148,7 @@ func (c *ConceptMapConverter) ConvertCSVToFHIRAndSave(reader io.Reader, csvName 
 
 	// Save with original CSV name (minus extension) plus .json
 	outputFile := filepath.Join(repository.localPath, baseName+".json")
-	if err := c.conceptMapService.SaveConceptMap(outputFile, conceptMap); err != nil {
+	if err := c.SaveConceptMap(outputFile, conceptMap); err != nil {
 		return fmt.Errorf("failed to save ConceptMap: %w", err)
 	}
 
@@ -236,8 +236,7 @@ func (c *ConceptMapConverter) finalizeGroups(groupMap map[string]*fhir.ConceptMa
 	return groups
 }
 
-// TODO: make this work on the repository?
-func (s *ConceptMapService) CreateConceptMap(id string, name string, sourceValueSet string, targetValueSet string) *fhir.ConceptMap {
+func (c *ConceptMapConverter) CreateConceptMap(id string, name string, sourceValueSet string, targetValueSet string) *fhir.ConceptMap {
 	url := fmt.Sprintf("http://localhost/fhir/ConceptMap/%s", id)
 
 	return &fhir.ConceptMap{
@@ -252,9 +251,8 @@ func (s *ConceptMapService) CreateConceptMap(id string, name string, sourceValue
 	}
 }
 
-// TODO make this work on the repository?
 // Add this method to your existing conceptmap/service.go file
-func (s *ConceptMapService) SaveConceptMap(outputPath string, cm *fhir.ConceptMap) error {
+func (c *ConceptMapConverter) SaveConceptMap(outputPath string, cm *fhir.ConceptMap) error {
 	data, err := json.MarshalIndent(cm, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal ConceptMap: %w", err)
@@ -265,10 +263,10 @@ func (s *ConceptMapService) SaveConceptMap(outputPath string, cm *fhir.ConceptMa
 	}
 
 	if err := os.WriteFile(outputPath, data, 0644); err != nil {
-		s.log.Error().Err(err).Str("path", outputPath).Msg("Failed to write ConceptMap to file")
+		c.log.Error().Err(err).Str("path", outputPath).Msg("Failed to write ConceptMap to file")
 		return fmt.Errorf("failed to write ConceptMap file: %w", err)
 	}
 
-	s.log.Debug().Str("path", outputPath).Msg("Successfully saved ConceptMap")
+	c.log.Debug().Str("path", outputPath).Msg("Successfully saved ConceptMap")
 	return nil
 }
