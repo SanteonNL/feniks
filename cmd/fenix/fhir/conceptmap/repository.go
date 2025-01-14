@@ -101,6 +101,8 @@ func (repo *ConceptMapRepository) GetConceptMap(url string) (*fhir.ConceptMap, e
 	if cached, ok := repo.cache.Load(url); ok {
 		return cached.(*fhir.ConceptMap), nil
 	}
+
+	return nil, fmt.Errorf("ConceptMap not found in cache for URL: %s", url)
 }
 
 // GetConceptMapURLsByValuesetURL retrieves all ConceptMaps with a target URI matching the input URL.
